@@ -1,4 +1,7 @@
-Software Heritage - Python module template
-==========================================
+Software Heritage - Archive altering facilities
+===============================================
 
-Python module template, used as skeleton to create new modules.
+It happens for Software Heritage to record content that either should not
+have been archived or should no longer be archived. ``swh-alter`` holds
+the tools necessary to prune or make inaccessible content from Software
+Heritage archive.

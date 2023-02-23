@@ -1,4 +1,4 @@
-.. _swh-foo:
+.. _swh-alter:
 
 .. include:: README.rst
 
