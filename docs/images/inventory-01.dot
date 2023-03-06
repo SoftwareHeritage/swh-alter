@@ -1,0 +1,192 @@
+digraph "Inventory step 01 (after looking up graph)" {
+	graph [nodesep=0.5,
+		rankdir="LR",
+		ranksep=1
+	];
+	subgraph cnt {
+		node [fillcolor=pink,
+			style=invis
+		];
+		12	[fillcolor=pink,
+			label="00000000\n00000000\n00000000\n00000000\n00000001",
+			style="invis,bold"];
+		13	[fillcolor=pink,
+			label="00000000\n00000000\n00000000\n00000000\n00000007",
+			style="invis,bold"];
+		16	[fillcolor=pink,
+			label="00000000\n00000000\n00000000\n00000000\n00000014",
+			style=invis];
+		17	[fillcolor=pink,
+			label="00000000\n00000000\n00000000\n00000000\n00000011",
+			style=invis];
+		18	[fillcolor=pink,
+			label="00000000\n00000000\n00000000\n00000000\n00000005",
+			style="invis,bold"];
+		19	[fillcolor=pink,
+			label="00000000\n00000000\n00000000\n00000000\n00000004",
+			style="invis,bold"];
+		20	[fillcolor=pink,
+			label="00000000\n00000000\n00000000\n00000000\n00000015",
+			style=invis];
+	}
+	subgraph cluster_dir {
+		graph [label="File contents",
+			style=invis
+		];
+		node [fillcolor=lightblue,
+			shape=folder,
+			style=invis
+		];
+		edge [style=invis];
+		12;
+		13;
+		16;
+		17;
+		18;
+		19;
+		20;
+		6	[fillcolor=lightblue,
+			label="00000000\n00000000\n00000000\n00000000\n00000008",
+			shape=folder,
+			style="invis,bold"];
+		6 -> 12	[style=invis];
+		6 -> 13	[style=invis];
+		14	[fillcolor=lightblue,
+			label="00000000\n00000000\n00000000\n00000000\n00000006",
+			shape=folder,
+			style="invis,bold"];
+		6 -> 14	[style=invis];
+		14 -> 18	[style=invis];
+		14 -> 19	[style=invis];
+		8	[fillcolor=lightblue,
+			label="00000000\n00000000\n00000000\n00000000\n00000002",
+			shape=folder,
+			style="invis,bold"];
+		8 -> 12	[style=invis];
+		9	[fillcolor=lightblue,
+			label="00000000\n00000000\n00000000\n00000000\n00000017",
+			shape=folder,
+			style=invis];
+		9 -> 16	[style=invis];
+		15	[fillcolor=lightblue,
+			label="00000000\n00000000\n00000000\n00000000\n00000016",
+			shape=folder,
+			style=invis];
+		9 -> 15	[style=invis];
+		15 -> 20	[style=invis];
+		11	[fillcolor=lightblue,
+			label="00000000\n00000000\n00000000\n00000000\n00000012",
+			shape=folder,
+			style=invis];
+		11 -> 17	[style=invis];
+		11 -> 6	[style=invis];
+	}
+	subgraph cluster_rev {
+		graph [label=Revisions,
+			style=invis
+		];
+		node [fillcolor=orchid,
+			shape=diamond,
+			style=invis
+		];
+		edge [style=invis];
+		6;
+		8;
+		9;
+		11;
+		7	[fillcolor=orchid,
+			label="00000000\n00000000\n00000000\n00000000\n00000003",
+			shape=diamond,
+			style="invis,bold"];
+		7 -> 8	[style=invis];
+		2	[fillcolor=orchid,
+			label="00000000\n00000000\n00000000\n00000000\n00000009",
+			shape=diamond,
+			style="invis,bold"];
+		2 -> 6	[style=invis];
+		2 -> 7	[constraint=false,
+			style=invis];
+		10	[fillcolor=orchid,
+			label="00000000\n00000000\n00000000\n00000000\n00000013",
+			shape=diamond,
+			style=invis];
+		10 -> 11	[style=invis];
+		10 -> 2	[constraint=false,
+			style=invis];
+		5	[fillcolor=orchid,
+			label="00000000\n00000000\n00000000\n00000000\n00000018",
+			shape=diamond,
+			style=invis];
+		5 -> 9	[style=invis];
+		5 -> 10	[constraint=false,
+			style=invis];
+	}
+	subgraph cluster_rel {
+		graph [label=Releases,
+			style=invis
+		];
+		node [fillcolor=sandybrown,
+			shape=octagon,
+			style=invis
+		];
+		edge [style=invis];
+		2;
+		5;
+		3	[fillcolor=sandybrown,
+			label="00000000\n00000000\n00000000\n00000000\n00000010",
+			shape=octagon,
+			style="invis,bold"];
+		3 -> 2	[style=invis];
+		4	[fillcolor=sandybrown,
+			label="00000000\n00000000\n00000000\n00000000\n00000021",
+			shape=octagon,
+			style=invis];
+		4 -> 5	[style=invis];
+	}
+	subgraph cluster_snp {
+		graph [label=Snapshot,
+			style=invis
+		];
+		node [fillcolor=aqua,
+			shape=doubleoctagon,
+			style=invis
+		];
+		edge [style=invis];
+		2;
+		3;
+		4;
+		1	[fillcolor=aqua,
+			label="00000000\n00000000\n00000000\n00000000\n00000022",
+			shape=doubleoctagon,
+			style=invis];
+		1 -> 2	[style=invis];
+		1 -> 3	[style=invis];
+		1 -> 4	[style=invis];
+		22	[fillcolor=aqua,
+			label="00000000\n00000000\n00000000\n00000000\n00000020",
+			shape=doubleoctagon,
+			style="invis,bold"];
+		22 -> 2	[style=invis];
+		22 -> 3	[style=invis];
+	}
+	subgraph cluster_ori {
+		graph [label=Origins];
+		node [fillcolor=khaki,
+			shape=egg,
+			style=invis
+		];
+		edge [style=invis];
+		1;
+		22;
+		0	[fillcolor=khaki,
+			label="8f50d3f6\n0eae370d\ndbf85c86\n219c5510\n8a350165",
+			shape=egg,
+			style="filled,dotted"];
+		0 -> 1	[style=invis];
+		21	[fillcolor=khaki,
+			label="83404f99\n5118bd25\n774f4ac1\n4422a8f1\n75e7a054",
+			shape=egg,
+			style="invis,bold"];
+		21 -> 22	[style=invis];
+	}
+}
