@@ -3,9 +3,10 @@
 .. include:: README.rst
 
 .. toctree::
-   :maxdepth: 2
-   :caption: Contents:
+   :maxdepth: 1
+   :caption: Overview
 
+   removal-algorithm
 
 .. only:: standalone_package_doc
 
