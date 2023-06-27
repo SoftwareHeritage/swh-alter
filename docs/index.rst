@@ -7,6 +7,7 @@
    :caption: Overview
 
    removal-algorithm
+   recovery-bundles
 
 .. only:: standalone_package_doc
 
