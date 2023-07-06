@@ -6,6 +6,7 @@
    :maxdepth: 1
    :caption: Overview
 
+   usage
    removal-algorithm
    recovery-bundles
 
