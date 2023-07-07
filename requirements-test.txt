@@ -1,3 +1,4 @@
 pytest
+swh.core[testing]
 swh.graph[testing]
 swh.storage[testing]
