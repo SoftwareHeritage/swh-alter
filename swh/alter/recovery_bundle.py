@@ -29,7 +29,6 @@ from typing import (
     Type,
     Union,
 )
-from zipfile import Path as ZipPath
 from zipfile import ZipFile
 
 import attrs
@@ -522,11 +521,15 @@ class RecoveryBundle:
     ):
         if name_filter is None:
             name_filter = lambda name: True  # noqa: E731
-        for zip_path in ZipPath(self._zip, at=f"{dir}/").iterdir():
-            if not name_filter(zip_path.name):
+        for zip_info in self._zip.infolist():
+            if not zip_info.filename.startswith(f"{dir}/"):
+                continue
+            if zip_info.is_dir():
+                continue
+            if not name_filter(zip_info.filename.split("/")[-1]):
                 continue
             d = kafka_to_value(
-                age_decrypt(self.object_decryption_key, zip_path.read_bytes())
+                age_decrypt(self.object_decryption_key, self._zip.read(zip_info))
             )
             yield cls.from_dict(d)
 
@@ -642,21 +645,19 @@ class RecoveryBundle:
 
 def _swhid_to_arcname(swhid: ExtendedSWHID):
     basename = str(swhid).replace(":", "_")
-    match swhid.object_type:
-        case ExtendedObjectType.CONTENT:
-            return f"contents/{basename}.age"
-        case ExtendedObjectType.DIRECTORY:
-            return f"directories/{basename}.age"
-        case ExtendedObjectType.REVISION:
-            return f"revisions/{basename}.age"
-        case ExtendedObjectType.RELEASE:
-            return f"releases/{basename}.age"
-        case ExtendedObjectType.SNAPSHOT:
-            return f"snapshots/{basename}.age"
-        case ExtendedObjectType.ORIGIN:
-            return f"origins/{basename}.age"
-        case _:
-            raise NotImplementedError(f"Unknown object type {swhid.object_type}")
+    if swhid.object_type == ExtendedObjectType.CONTENT:
+        return f"contents/{basename}.age"
+    if swhid.object_type == ExtendedObjectType.DIRECTORY:
+        return f"directories/{basename}.age"
+    if swhid.object_type == ExtendedObjectType.REVISION:
+        return f"revisions/{basename}.age"
+    if swhid.object_type == ExtendedObjectType.RELEASE:
+        return f"releases/{basename}.age"
+    if swhid.object_type == ExtendedObjectType.SNAPSHOT:
+        return f"snapshots/{basename}.age"
+    if swhid.object_type == ExtendedObjectType.ORIGIN:
+        return f"origins/{basename}.age"
+    raise NotImplementedError(f"Unknown object type {swhid.object_type}")
 
 
 def _from_hashes(
