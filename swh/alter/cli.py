@@ -1,4 +1,6 @@
-from typing import TYPE_CHECKING, List
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, List, Optional, Set
 
 import click
 
@@ -7,6 +9,8 @@ from swh.core.cli import swh as swh_cli_group
 
 if TYPE_CHECKING:
     from swh.model.swhids import ExtendedSWHID
+
+    from .recovery_bundle import ObjectDecryptionKeyProvider, ShareDecryptionKeys
 
 
 class SwhidOrUrlParamType(click.ParamType):
@@ -161,7 +165,7 @@ def remove(
     reason,
     expire,
     recovery_bundle,
-):
+) -> None:
     """Remove the given SWHIDs or URLs from the archive."""
     from swh.graph.http_client import RemoteGraphClient
     from swh.storage import get_storage
@@ -263,7 +267,7 @@ def recovery_bundle_cli_group(ctx):
     required=True,
 )
 @click.pass_context
-def info(ctx, recovery_bundle, dump_manifest, show_encrypted_secrets):
+def info(ctx, recovery_bundle, dump_manifest, show_encrypted_secrets) -> None:
     """Display the manifest of the given recovery bundle."""
     from .recovery_bundle import RecoveryBundle
 
@@ -294,7 +298,7 @@ def info(ctx, recovery_bundle, dump_manifest, show_encrypted_secrets):
             click.echo(bundle.encrypted_secret(share_id))
 
 
-def _share_decryption_keys_provider(share_ids):
+def _share_decryption_keys_provider(share_ids: Set[str]) -> ShareDecryptionKeys:
     import subprocess
     import sys
 
@@ -353,7 +357,7 @@ def _share_decryption_keys_provider(share_ids):
     sys.exit(1)
 
 
-def _print_decrypted_mnemonic(mnemonic, share_id=None):
+def _print_decrypted_mnemonic(mnemonic: str, share_id: Optional[str] = None) -> None:
     fmt_from = ""
     if share_id:
         fmt_from = f" from {click.style(share_id, fg='magenta', bold=True)}"
@@ -398,7 +402,7 @@ def _recover_mnemonics_from_identity_files(
 
 def prompting_object_decryption_key_provider(
     manifest, known_mnemonics=None, identity_files=None, show_decrypted_mnemonics=False
-):
+) -> str:
     import functools
 
     from .recovery_bundle import recover_object_decryption_key_from_encrypted_shares
@@ -436,12 +440,12 @@ def prompting_object_decryption_key_provider(
     )
 
 
-def get_object_decryption_key_provider(ctx):
+def get_object_decryption_key_provider(ctx) -> ObjectDecryptionKeyProvider:
     import functools
 
     secrets = ctx.params.get("secret")
     identity_files = ctx.params.get("identity")
-    object_decryption_key_provider = functools.partial(
+    object_decryption_key_provider: ObjectDecryptionKeyProvider = functools.partial(
         prompting_object_decryption_key_provider,
         known_mnemonics=secrets,
         identity_files=identity_files,
@@ -524,7 +528,7 @@ def extract_content(
     decryption_key=None,
     identity=None,
     secret=None,
-):
+) -> None:
     """Extract data from content stored in a recovery bundle."""
     from .recovery_bundle import RecoveryBundle, WrongDecryptionKey
 
@@ -578,7 +582,7 @@ def extract_content(
 @click.pass_context
 def restore(
     ctx, recovery_bundle, decryption_key=None, identity=None, secret=None
-):
+) -> None:
     """Restore a recovery bundle to Software Heritage archive."""
     from .recovery_bundle import RecoveryBundle, WrongDecryptionKey
 
@@ -650,7 +654,9 @@ def _strip_rage_report(output):
     type=click.Path(exists=True, dir_okay=False, readable=True),
     required=True,
 )
-def recover_decryption_key(recovery_bundle, secret, identity, show_recovered_secrets):
+def recover_decryption_key(
+    recovery_bundle, secret, identity, show_recovered_secrets
+) -> None:
     """Recover the decryption key using shared secrets."""
     import subprocess
     import sys
@@ -709,7 +715,7 @@ def recover_decryption_key(recovery_bundle, secret, identity, show_recovered_sec
 @click.pass_context
 def rollover(
     ctx, recovery_bundles, decryption_key=None, identity=None, secret=None
-):
+) -> None:
     """Rollover recovery bundles to new shared secrets."""
     conf = ctx.obj["config"]
 

@@ -268,7 +268,7 @@ class _SecretSharingGroup:
         validator=attrs.validators.instance_of(dict)
     )
 
-    def group_parameters(self):
+    def group_parameters(self) -> Tuple[int, int]:
         if self.minimum_required_shares == 1:
             return (1, 1)
         return (self.minimum_required_shares, len(self.recipient_keys))
@@ -380,9 +380,8 @@ class SecretRecoveryError(Exception):
 
 
 ObjectDecryptionKeyProvider = Callable[[Manifest], AgeSecretKey]
-ShareDecryptionKeysProvider = Callable[
-    [], Iterator[Tuple[ShareIdentifier, AgeSecretKey]]
-]
+ShareDecryptionKeys = Iterator[Tuple[ShareIdentifier, AgeSecretKey]]
+ShareDecryptionKeysProvider = Callable[[], ShareDecryptionKeys]
 
 
 def recover_object_decryption_key_from_encrypted_shares(
@@ -394,11 +393,11 @@ def recover_object_decryption_key_from_encrypted_shares(
     from shamir_mnemonic.recovery import RecoveryState
     from shamir_mnemonic.share import Share
 
-    def mnemonics_from_known():
+    def mnemonics_from_known() -> Iterator[str]:
         if known_mnemonics:
             yield from known_mnemonics
 
-    def mnemonics_from_provider():
+    def mnemonics_from_provider() -> Iterator[str]:
         for share_id, secret_key in share_decryption_keys_provider():
             mnemonic = age_decrypt(secret_key, encrypted_shares[share_id]).decode(
                 "us-ascii"
@@ -872,7 +871,7 @@ class RecoveryBundleCreator:
 
     def backup_swhids(self, swhids: Iterable[ExtendedSWHID]):
         # groupby() splits consecutive groups, so we need to order the list first
-        def key(swhid):
+        def key(swhid: ExtendedSWHID) -> int:
             return _OBJECT_TYPE_ORDERING[swhid.object_type]
 
         sorted_swhids = sorted(swhids, key=key)
