@@ -373,7 +373,6 @@ def _print_decrypted_mnemonic(mnemonic, share_id=None):
             for index, word in enumerate(words)
         )
     )
-    return mnemonic
 
 
 def _recover_mnemonics_from_identity_files(

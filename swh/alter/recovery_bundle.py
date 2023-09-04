@@ -388,7 +388,7 @@ ShareDecryptionKeysProvider = Callable[
 def recover_object_decryption_key_from_encrypted_shares(
     encrypted_shares: Dict[ShareIdentifier, AgeArmoredEncryptedPayload],
     share_decryption_keys_provider: ShareDecryptionKeysProvider,
-    decrypted_mnemonic_processor: Optional[Callable[[str, Optional[str]], str]] = None,
+    decrypted_mnemonic_processor: Optional[Callable[[str, Optional[str]], None]] = None,
     known_mnemonics: Optional[List[str]] = None,
 ) -> str:
     from shamir_mnemonic.recovery import RecoveryState
@@ -404,7 +404,7 @@ def recover_object_decryption_key_from_encrypted_shares(
                 "us-ascii"
             )
             if decrypted_mnemonic_processor:
-                mnemonic = decrypted_mnemonic_processor(mnemonic, share_id)
+                decrypted_mnemonic_processor(mnemonic, share_id)
             yield mnemonic
 
     # TODO: We could provide better feedback on how our progress. This
