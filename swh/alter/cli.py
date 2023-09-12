@@ -1,15 +1,13 @@
-import hashlib
 import logging
-from typing import List
+from typing import TYPE_CHECKING, List
 
 import click
 
 from swh.core.cli import CONTEXT_SETTINGS
 from swh.core.cli import swh as swh_cli_group
-from swh.model.swhids import ExtendedSWHID
 
-from .inventory import make_inventory
-from .removable import mark_removable
+if TYPE_CHECKING:
+    from swh.model.swhids import ExtendedSWHID
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +16,8 @@ class SwhidOrUrlParamType(click.ParamType):
     name = "swhid or origin URL"
 
     def convert(self, value, param, ctx):
+        import hashlib
+
         from swh.model.exceptions import ValidationError
         from swh.model.swhids import ExtendedSWHID
 
@@ -109,13 +109,16 @@ def alter_cli_group(ctx):
 @click.pass_obj
 def remove(
     obj,
-    swhids: List[ExtendedSWHID],
+    swhids: List["ExtendedSWHID"],
     dry_run: bool,
     output_inventory_subgraph,
     output_removable_subgraph,
     output_pruned_removable_subgraph,
 ):
     """Remove the given SWHIDs or URLs from the archive."""
+    from .inventory import make_inventory
+    from .removable import mark_removable
+
     conf = obj["config"]
     from swh.storage import get_storage
 
