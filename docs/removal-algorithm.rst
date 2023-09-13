@@ -82,6 +82,8 @@ We can avoid unneeded lookups by traversing our subgraph in topological order
 contents). Then, when examining a node, we can look at its predecessors. If any
 of them must be kept, then we know it must be kept as well.
 
+.. _alter_removal_algorithm_example:
+
 Example of removing an origin
 -----------------------------
 
