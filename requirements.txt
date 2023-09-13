@@ -1,2 +1,6 @@
+attrs
 click
 igraph
+pyyaml
+shamir-mnemonic
+typing_extensions

@@ -1,10 +1,5 @@
 .. _alter_recovery_bundles:
 
-.. important::
-
-   This specification should be considered as a draft pending its initial
-   implementation.
-
 Recovery bundles
 ================
 
@@ -307,3 +302,87 @@ Content of ``manifest.yml``:
       -----END AGE ENCRYPTED FILE-----
   reason: copyright issue
   expire: 2024-06-18T13:12:42Z
+
+Implementation notes
+--------------------
+
+Our goal is to require multiple parties to agree before a recovery bundle can be
+restored (or have its content extracted). We believe the proposed scheme fulfill
+this goal, but as all security-related tools, we can analyze some limits.
+
+1. With Shamir Secret Sharing, the share-holders cannot verify that their shares
+are valid. Meaning:
+
+ - The dealer could cheat
+
+   In our case, the dealer is the recovery bundle creation system. An attacker
+   would need to change the production code, or the recovery bundle itself after
+   it has been generated but before it has been sent to a common storage. In
+   both cases, that means they have access to the system used to delete objects
+   in the database. Therefore we can assume they have elevated access to the
+   database, and could delete or look-up the data directly instead of using
+   a more complex method of corrupting a recovery bundle in one way or another.
+
+ - The secret holders could cheat.
+
+   With the local mode of operation, holders don’t exchange secrets. They
+   only provide temporary access to their secret key (ideally by plugging a
+   YubiKey). Cheating would mean changing the production code which would most
+   likely be detected while trying to recover from the error of finding a
+   corrupted share.
+
+   When working remotely, holders could willingly share a corrupted secret. This
+   would result in a denial-of-service (due to SLIP-0039 properties). However,
+   while this would prevent one bundle to be restored, this would result in
+   potential consequences at the employment level. Depending on the secret
+   sharing configuration, this might have no impact on the team ability to
+   restore the bundle anyway, as another holder could provide a working secret.
+
+2. The person reassembling the secrets could keep a copy to re-use them later
+
+   While secrets could be reused, there is little to gain from doing so. Once a
+   bundle has been restored, it is basically useless: all the information has
+   returned to Software Heritage archive. Extracting content could be done more
+   than once, but it would be limited to a single bundle, as bundles all have
+   their own decryption key.
+
+   Keeping a secret for reuse is thus equivalent to keeping a single bundle
+   decryption key for reuse. While not ideal, at least for this precise bundle,
+   the parties who have agreed to extract content knows about it.
+
+3. When a secret holder uses an identity file, a malevolent participant could
+   make a copy when restoring a bundle in local mode. This would enable them to
+   restore or extract content from any number of recovery bundles.
+
+   Indeed. When holders are using an identity file, remote operations should
+   be preferred.
+
+   Using an identity file directly can be limited to general rollover
+   operations, when multiple bundles need to be recovered at once. Before
+   running the rollover, each secret holder using an identity file should
+   generate a new identity and their public keys updated in the
+   configuration.
+
+4. An attacker could ask a secret holder to decrypt any payload as part
+   of a remote operation.
+
+   True. Therefore:
+
+    - key pairs used by secret holders should only be used for recovery bundle
+      secrets,
+    - secret holders should always make sure that the removal
+      identifier visible after decrypting the payload matches the bundle
+      that needs to be accessed.
+
+   The payloads themselves are protected from tampering by `*age* using AEAD
+   <https://words.filippo.io/dispatches/age-authentication/>`_.
+
+5. `python-shamir-mnemonic` is vulnerable to side-channel attacks.
+
+   A side-channel issue in `python-shamir-mnemonic` would allow an attacker to
+   recover more information than they should from a limited number of shares. In
+   our case, that means at least having a secret holder ready to recover their
+   share for a given bundle, and start from there. While not ideal, this severely
+   limits the attack surface of using a non-optimal SLIP-0039 implementation.
+   An attacker would first have to steal an holder secret key, get access to
+   their target bundle, before they can start working on the maths…

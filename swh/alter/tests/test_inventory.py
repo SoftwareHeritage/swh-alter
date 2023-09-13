@@ -87,10 +87,10 @@ def fix_contents(contents: Iterator[Content]) -> Iterator[Content]:
         swhid_value = int.from_bytes(content.swhid().object_id, "big")
         yield Content.from_dict(
             {
-                "sha1": bytes.fromhex(f"{swhid_value:040}"),
-                "sha1_git": bytes.fromhex(f"{swhid_value:040}"),
-                "sha256": bytes.fromhex(f"{swhid_value:064}"),
-                "blake2s256": bytes.fromhex(f"{swhid_value:064}"),
+                "sha1": bytes.fromhex(f"{swhid_value:040x}"),
+                "sha1_git": bytes.fromhex(f"{swhid_value:040x}"),
+                "sha256": bytes.fromhex(f"{swhid_value:064x}"),
+                "blake2s256": bytes.fromhex(f"{swhid_value:064x}"),
                 "data": b"",
                 "length": 0,
                 "ctime": datetime.datetime.now(tz=datetime.timezone.utc),
@@ -155,26 +155,34 @@ def sample_populated_storage(
     snapshot_20_with_multiple_branches_pointing_to_the_same_head,
     directory_6_with_multiple_entries_pointing_to_the_same_content,
 ):
-    swh_storage.content_add_metadata(fix_contents(graph_dataset.CONTENTS))
+    result = swh_storage.content_add(fix_contents(graph_dataset.CONTENTS))
+    assert result.get("content:add") == 6
+    result = swh_storage.skipped_content_add(graph_dataset.SKIPPED_CONTENTS)
+    assert result == {"skipped_content:add": 1}
     directories = list(graph_dataset.DIRECTORIES)
     directories[1] = directory_6_with_multiple_entries_pointing_to_the_same_content
-    swh_storage.directory_add(directories)
-    swh_storage.revision_add(graph_dataset.REVISIONS)
+    result = swh_storage.directory_add(directories)
+    assert result == {"directory:add": 6}
+    result = swh_storage.revision_add(graph_dataset.REVISIONS)
+    assert result == {"revision:add": 4}
     # swh.graph.example_dataset contains a dangling release which would
     # prevent us from removing any revisions, directories or contents in our tests.
     # We need to skip it.
-    swh_storage.release_add(
+    result = swh_storage.release_add(
         [
             rel
             for rel in graph_dataset.RELEASES
             if str(rel.swhid()) != "swh:1:rel:0000000000000000000000000000000000000019"
         ]
     )
+    assert result == {"release:add": 2}
     snapshot_22 = graph_dataset.SNAPSHOTS[1]
-    swh_storage.snapshot_add(
+    result = swh_storage.snapshot_add(
         [snapshot_20_with_multiple_branches_pointing_to_the_same_head, snapshot_22]
     )
-    swh_storage.origin_add(graph_dataset.ORIGINS)
+    assert result == {"snapshot:add": 2}
+    result = swh_storage.origin_add(graph_dataset.ORIGINS)
+    assert result == {"origin:add": 2}
     swh_storage.origin_visit_add(graph_dataset.ORIGIN_VISITS)
     swh_storage.origin_visit_status_add(graph_dataset.ORIGIN_VISIT_STATUSES)
     return swh_storage

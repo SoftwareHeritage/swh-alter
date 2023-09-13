@@ -185,8 +185,6 @@ class Marker:
 
     def mark_candidates(self):
         for index, vid in enumerate(self._subgraph.topological_sorting()):
-            with open("mark-%02d.dot" % index, "w") as f:
-                self._subgraph.write_dot(f)
             vertex = self._subgraph.vs[vid]
             assert all(
                 pred["state"] != MarkingState.UNMARKED for pred in vertex.predecessors()
