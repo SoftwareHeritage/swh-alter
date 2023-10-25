@@ -42,7 +42,7 @@ DEFAULT_CONFIG = {
             "cls": "memory",
         },
     },
-    "graph_client": {
+    "graph": {
         "url": "http://granet.internal.softwareheritage.org:5009",
         # timeout is in seconds
         # see https://requests.readthedocs.io/en/latest/user/advanced/#timeouts
@@ -175,7 +175,7 @@ def remove(
 
     conf = ctx.obj["config"]
     storage = get_storage(**conf["storage"])
-    graph_client = RemoteGraphClient(**conf["graph_client"])
+    graph_client = RemoteGraphClient(**conf["graph"])
 
     click.echo("Removing the following origins:")
     for swhid in swhids:
