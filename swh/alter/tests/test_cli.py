@@ -360,7 +360,7 @@ def test_cli_remove_create_bundle_with_configured_share_encryption_keys(
         assert bundle.share_ids == share_ids
 
 
-def test_cli_recovery_bundle_remove_can_be_canceled(
+def test_cli_remove_can_be_canceled(
     mocked_external_resources, remove_config, remove_input_proceed_with_removal
 ):
     runner = CliRunner()
