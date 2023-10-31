@@ -6,11 +6,12 @@
 from datetime import datetime, timedelta
 import os
 import shutil
-import subprocess
 
 from click.testing import CliRunner
 import pytest
 import yaml
+
+from swh.model.swhids import ExtendedSWHID
 
 from ..cli import (
     DEFAULT_CONFIG,
@@ -21,6 +22,7 @@ from ..cli import (
     restore,
     rollover,
 )
+from ..operations import Remover
 from ..recovery_bundle import age_decrypt
 from .test_inventory import (  # noqa
     directory_6_with_multiple_entries_pointing_to_the_same_content,
@@ -64,9 +66,32 @@ def remove_config():
     return config
 
 
-def test_cli_remove_dry_run_with_origin_as_swhid(
-    mocked_external_resources, remove_config
-):
+def test_cli_remove_dry_run(mocker, mocked_external_resources, remove_config):
+    removable_swhids = [
+        ExtendedSWHID.from_string("swh:1:ori:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+        ExtendedSWHID.from_string("swh:1:ori:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
+    ]
+    mocker.patch.object(Remover, "get_removable", return_value=removable_swhids)
+    runner = CliRunner()
+    result = runner.invoke(
+        remove,
+        [
+            "--identifier",
+            "test",
+            "--recovery-bundle",
+            "/nonexistent",
+            "--dry-run",
+            "swh:1:ori:cafecafecafecafecafecafecafecafecafecafe",
+        ],
+        obj={"config": remove_config},
+    )
+    assert result.exit_code == 0
+    assert "We would remove 2 objects" in result.output
+
+
+def test_cli_remove_colored_output(mocker, mocked_external_resources, remove_config):
+    import click
+
     runner = CliRunner()
     result = runner.invoke(
         remove,
@@ -79,36 +104,20 @@ def test_cli_remove_dry_run_with_origin_as_swhid(
             "swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165",
         ],
         obj={"config": remove_config},
+        color=True,
     )
     assert result.exit_code == 0
-    assert "We would remove 11 objects" in result.output
-
-
-def test_cli_remove_dry_run_with_origin_as_url(
-    mocked_external_resources, remove_config
-):
-    runner = CliRunner()
-    result = runner.invoke(
-        remove,
-        [
-            "--identifier",
-            "test",
-            "--recovery-bundle",
-            "/nonexistent",
-            "--dry-run",
-            "https://example.com/swh/graph2",
-        ],
-        obj={"config": remove_config},
+    assert (
+        click.style("Inventorying all reachable objects…", fg="cyan") in result.output
     )
-    assert result.exit_code == 0
-    assert "We would remove 11 objects" in result.output
 
 
-def test_cli_remove_dry_run_with_multiple_origins(
-    mocked_external_resources, remove_config
+def test_cli_remove_origin_conversions(
+    mocker, mocked_external_resources, remove_config
 ):
+    mocker.patch.object(Remover, "get_removable", return_value=[])
     runner = CliRunner()
-    result = runner.invoke(
+    runner.invoke(
         remove,
         [
             "--identifier",
@@ -121,85 +130,39 @@ def test_cli_remove_dry_run_with_multiple_origins(
         ],
         obj={"config": remove_config},
     )
-    assert result.exit_code == 0
-    assert "We would remove 23 objects" in result.output
+    args, _ = Remover.get_removable.call_args
+    assert set(args[0]) == {
+        ExtendedSWHID.from_string("swh:1:ori:83404f995118bd25774f4ac14422a8f175e7a054"),
+        ExtendedSWHID.from_string("swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165"),
+    }
 
 
-@pytest.mark.skipif(
-    not shutil.which("gc"), reason="missing `gc` executable from graphviz"
-)
-def test_cli_remove_output_inventory_subgraph(mocked_external_resources, remove_config):
+def test_cli_remove_output_subgraphs(mocker, mocked_external_resources, remove_config):
+    mocker.patch.object(Remover, "get_removable", return_value=[])
+    swhid = "swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165"
     runner = CliRunner()
-    with runner.isolated_filesystem():
-        runner.invoke(
-            remove,
-            [
-                "--identifier",
-                "test",
-                "--recovery-bundle",
-                "/nonexistent",
-                "--dry-run",
-                "--output-inventory-subgraph=subgraph.dot",
-                "swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165",
-            ],
-            obj={"config": remove_config},
-        )
-        completed_process = subprocess.run(
-            ["gc", "subgraph.dot"], check=True, capture_output=True
-        )
-        assert b"      21      24 Inventory" in completed_process.stdout
-
-
-@pytest.mark.skipif(
-    not shutil.which("gc"), reason="missing `gc` executable from graphviz"
-)
-def test_cli_remove_output_removable_subgraph(mocked_external_resources, remove_config):
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        runner.invoke(
-            remove,
-            [
-                "--identifier",
-                "test",
-                "--recovery-bundle",
-                "/nonexistent",
-                "--dry-run",
-                "--output-removable-subgraph=subgraph.dot",
-                "swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165",
-            ],
-            obj={"config": remove_config},
-        )
-        completed_process = subprocess.run(
-            ["gc", "subgraph.dot"], check=True, capture_output=True
-        )
-        assert b"      21      24 Removable" in completed_process.stdout
-
-
-@pytest.mark.skipif(
-    not shutil.which("gc"), reason="missing `gc` executable from graphviz"
-)
-def test_cli_remove_output_pruned_removable_subgraph(
-    mocked_external_resources, remove_config
-):
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        runner.invoke(
-            remove,
-            [
-                "--identifier",
-                "test",
-                "--recovery-bundle",
-                "/nonexistent",
-                "--dry-run",
-                "--output-pruned-removable-subgraph=subgraph.dot",
-                "swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165",
-            ],
-            obj={"config": remove_config},
-        )
-        completed_process = subprocess.run(
-            ["gc", "subgraph.dot"], check=True, capture_output=True
-        )
-        assert b"      11      10 Removable" in completed_process.stdout
+    runner.invoke(
+        remove,
+        [
+            "--identifier",
+            "test",
+            "--recovery-bundle",
+            "/nonexistent",
+            "--dry-run",
+            "--output-inventory-subgraph=inventory.dot",
+            "--output-removable-subgraph=removable.dot",
+            "--output-pruned-removable-subgraph=pruned.dot",
+            swhid,
+        ],
+        obj={"config": remove_config},
+    )
+    Remover.get_removable.assert_called_once()
+    args, kwargs = Remover.get_removable.call_args
+    assert len(args) == 1
+    assert set(args[0]) == {ExtendedSWHID.from_string(swhid)}
+    assert kwargs["output_inventory_subgraph"].name == "inventory.dot"
+    assert kwargs["output_removable_subgraph"].name == "removable.dot"
+    assert kwargs["output_pruned_removable_subgraph"].name == "pruned.dot"
 
 
 @pytest.fixture
@@ -207,161 +170,110 @@ def remove_input_proceed_with_removal():
     return "y\n"
 
 
-def test_cli_remove_create_bundle_with_given_identifier(
-    mocked_external_resources, remove_config, remove_input_proceed_with_removal
+@pytest.fixture
+def remover_for_bundle_creation(mocker):
+    mocker.patch(
+        "swh.storage.get_storage",
+        return_value=mocker.MagicMock(),
+    )
+    mocker.patch(
+        "swh.graph.http_client.RemoteGraphClient",
+        return_value=mocker.MagicMock(),
+    )
+    remover = Remover({}, {})
+    mocker.patch.object(
+        remover,
+        "get_removable",
+        return_value=[
+            ExtendedSWHID.from_string(
+                "swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165"
+            )
+        ],
+    )
+    mocker.patch.object(remover, "create_recovery_bundle")
+    mocker.patch("swh.alter.operations.Remover", return_value=remover)
+    return remover
+
+
+def test_cli_remove_create_bundle_no_extra_options(
+    remover_for_bundle_creation, remove_config, remove_input_proceed_with_removal
 ):
     runner = CliRunner()
-    with runner.isolated_filesystem():
-        runner.invoke(
-            remove,
-            [
-                "--identifier",
-                "this-is-not-my-departement",
-                "--recovery-bundle",
-                "test.swh-recovery-bundle",
-                "swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165",
-            ],
-            input=remove_input_proceed_with_removal,
-            obj={"config": remove_config},
-        )
-        from ..recovery_bundle import RecoveryBundle
-
-        bundle = RecoveryBundle("test.swh-recovery-bundle")
-        assert bundle.removal_identifier == "this-is-not-my-departement"
-
-
-def test_cli_remove_create_bundle_with_reason(
-    mocked_external_resources, remove_config, remove_input_proceed_with_removal
-):
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        runner.invoke(
-            remove,
-            [
-                "--identifier",
-                "test",
-                "--reason",
-                "we are doing a test",
-                "--recovery-bundle",
-                "test.swh-recovery-bundle",
-                "swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165",
-            ],
-            input=remove_input_proceed_with_removal,
-            obj={"config": remove_config},
-        )
-        from ..recovery_bundle import RecoveryBundle
-
-        bundle = RecoveryBundle("test.swh-recovery-bundle")
-        assert bundle.reason == "we are doing a test"
+    runner.invoke(
+        remove,
+        [
+            "--identifier",
+            "this-is-not-my-departement",
+            "--recovery-bundle",
+            "test.swh-recovery-bundle",
+            "swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165",
+        ],
+        input=remove_input_proceed_with_removal,
+        obj={"config": remove_config},
+    )
+    remover_for_bundle_creation.create_recovery_bundle.assert_called_once()
+    _, kwargs = remover_for_bundle_creation.create_recovery_bundle.call_args
+    assert kwargs["removable_swhids"] == remover_for_bundle_creation.get_removable()
+    assert kwargs["removal_identifier"] == "this-is-not-my-departement"
+    assert kwargs["recovery_bundle_path"] == "test.swh-recovery-bundle"
 
 
-def test_cli_remove_create_bundle_with_expire(
-    mocked_external_resources, remove_config, remove_input_proceed_with_removal
+def test_cli_remove_create_bundle_with_options(
+    remover_for_bundle_creation, remove_config, remove_input_proceed_with_removal
 ):
     expire = (datetime.now() + timedelta(days=365)).strftime("%Y-%m-%d")
     runner = CliRunner()
-    with runner.isolated_filesystem():
-        runner.invoke(
-            remove,
-            [
-                "--identifier",
-                "test",
-                "--expire",
-                expire,
-                "--recovery-bundle",
-                "test.swh-recovery-bundle",
-                "swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165",
-            ],
-            input=remove_input_proceed_with_removal,
-            obj={"config": remove_config},
-        )
-        from ..recovery_bundle import RecoveryBundle
-
-        bundle = RecoveryBundle("test.swh-recovery-bundle")
-        assert bundle.expire == datetime.fromisoformat(expire).astimezone()
-
-
-def test_cli_remove_create_bundle_with_expire_in_the_past(
-    mocked_external_resources, remove_config, remove_input_proceed_with_removal
-):
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        result = runner.invoke(
-            remove,
-            [
-                "--identifier",
-                "test",
-                "--expire",
-                "2001-01-01",
-                "--recovery-bundle",
-                "test.swh-recovery-bundle",
-                "swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165",
-            ],
-            input=remove_input_proceed_with_removal,
-            obj={"config": remove_config},
-            catch_exceptions=False,
-        )
-        assert result.exit_code != 0
-        assert "expiration date is in the past" in result.output
+    runner.invoke(
+        remove,
+        [
+            "--identifier",
+            "test",
+            "--recovery-bundle",
+            "test.swh-recovery-bundle",
+            "--reason",
+            "we are doing a test",
+            "--expire",
+            expire,
+            "swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165",
+        ],
+        input=remove_input_proceed_with_removal,
+        obj={"config": remove_config},
+    )
+    remover_for_bundle_creation.create_recovery_bundle.assert_called_once()
+    _, kwargs = remover_for_bundle_creation.create_recovery_bundle.call_args
+    assert kwargs["removable_swhids"] == remover_for_bundle_creation.get_removable()
+    assert kwargs["removal_identifier"] == "test"
+    assert kwargs["recovery_bundle_path"] == "test.swh-recovery-bundle"
+    assert kwargs["reason"] == "we are doing a test"
+    assert kwargs["expire"] == datetime.fromisoformat(expire).astimezone()
 
 
 def test_cli_remove_create_bundle_with_expire_unparseable(
-    mocked_external_resources, remove_config, remove_input_proceed_with_removal
+    remover_for_bundle_creation,
+    remove_config,
 ):
     runner = CliRunner()
-    with runner.isolated_filesystem():
-        result = runner.invoke(
-            remove,
-            [
-                "--identifier",
-                "test",
-                "--expire",
-                "garbage",
-                "--recovery-bundle",
-                "test.swh-recovery-bundle",
-                "swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165",
-            ],
-            input=remove_input_proceed_with_removal,
-            obj={"config": remove_config},
-            catch_exceptions=False,
-        )
-        assert result.exit_code != 0
-        assert "Invalid value for '--expire'" in result.output
-
-
-def test_cli_remove_create_bundle_with_configured_share_encryption_keys(
-    mocked_external_resources, remove_config, remove_input_proceed_with_removal
-):
-    # remove_config gets mangled during the run, so let’s gather the share_ids before the run
-    share_ids = {
-        share_id
-        for group in remove_config["recovery_bundles"]["secret_sharing"][
-            "groups"
-        ].values()
-        for share_id in group["recipient_keys"].keys()
-    }
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        runner.invoke(
-            remove,
-            [
-                "--identifier",
-                "this-is-not-my-departement",
-                "--recovery-bundle",
-                "test.swh-recovery-bundle",
-                "swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165",
-            ],
-            input=remove_input_proceed_with_removal,
-            obj={"config": remove_config},
-        )
-        from ..recovery_bundle import RecoveryBundle
-
-        bundle = RecoveryBundle("test.swh-recovery-bundle")
-        assert bundle.share_ids == share_ids
+    result = runner.invoke(
+        remove,
+        [
+            "--identifier",
+            "test",
+            "--expire",
+            "garbage",
+            "--recovery-bundle",
+            "/tmp/nonexistent",
+            "swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165",
+        ],
+        obj={"config": remove_config},
+        catch_exceptions=False,
+    )
+    assert result.exit_code != 0
+    assert "Invalid value for '--expire'" in result.output
 
 
 def test_cli_remove_can_be_canceled(
-    mocked_external_resources, remove_config, remove_input_proceed_with_removal
+    remover_for_bundle_creation,
+    remove_config,
 ):
     runner = CliRunner()
     result = runner.invoke(

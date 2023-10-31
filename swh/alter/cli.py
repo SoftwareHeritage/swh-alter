@@ -1,5 +1,11 @@
+# Copyright (C) 2023 The Software Heritage developers
+# See the AUTHORS file at the top-level directory of this distribution
+# License: GNU General Public License version 3, or any later version
+# See top-level LICENSE file for more information
+
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, List, Optional, Set
 
 import click
@@ -32,6 +38,17 @@ class SwhidOrUrlParamType(click.ParamType):
             sha1 = hashlib.sha1(value.encode("utf-8")).hexdigest()
             swhid = ExtendedSWHID.from_string(f"swh:1:ori:{sha1}")
             return swhid
+
+
+class ClickLoggingHandler(logging.Handler):
+    """Handler displaying logs using click.secho(), passing the style extra
+    attribute."""
+
+    def emit(self, record):
+        if hasattr(record, "style"):
+            click.secho(self.format(record), **record.style)
+        else:
+            click.echo(self.format(record))
 
 
 DEFAULT_CONFIG = {
@@ -170,75 +187,51 @@ def remove(
     from swh.graph.http_client import RemoteGraphClient
     from swh.storage import get_storage
 
-    from .inventory import make_inventory
-    from .removable import mark_removable
+    from .operations import Remover, RemoverError, logger
+
+    logger.propagate = False
+    logger.addHandler(ClickLoggingHandler())
+    logger.setLevel(logging.INFO)
 
     conf = ctx.obj["config"]
     storage = get_storage(**conf["storage"])
     graph_client = RemoteGraphClient(**conf["graph"])
 
-    click.echo("Removing the following origins:")
-    for swhid in swhids:
-        click.echo(f" - {swhid}")
-    click.secho("Inventorying all reachable objects…", fg="cyan")
-    inventory_subgraph = make_inventory(storage, graph_client, swhids)
-    if output_inventory_subgraph:
-        inventory_subgraph.write_dot(output_inventory_subgraph)
-        output_inventory_subgraph.close()
-    click.secho("Determining which objects can be safely removed…", fg="cyan")
-    removable_subgraph = mark_removable(storage, graph_client, inventory_subgraph)
-    if output_removable_subgraph:
-        removable_subgraph.write_dot(output_removable_subgraph)
-        output_removable_subgraph.close()
-    removable_subgraph.delete_unremovable()
-    if output_pruned_removable_subgraph:
-        removable_subgraph.write_dot(output_pruned_removable_subgraph)
-        output_pruned_removable_subgraph.close()
-    removable_swhids = list(removable_subgraph.removable_swhids())
-    if dry_run:
-        click.echo(f"We would remove {len(removable_swhids)} objects:")
-        for swhid in removable_swhids:
-            click.echo(f" - {swhid}")
-        return
-    click.confirm(
-        click.style(
-            f"Proceed with removing {len(removable_swhids)} objects?",
-            fg="yellow",
-            bold=True,
-        ),
-        abort=True,
-    )
+    remover = Remover(storage, graph_client)
+    try:
+        removable_swhids = remover.get_removable(
+            swhids,
+            output_inventory_subgraph=output_inventory_subgraph,
+            output_removable_subgraph=output_removable_subgraph,
+            output_pruned_removable_subgraph=output_pruned_removable_subgraph,
+        )
+        if dry_run:
+            click.echo(f"We would remove {len(removable_swhids)} objects:")
+            for swhid in removable_swhids:
+                click.echo(f" - {swhid}")
+            ctx.exit(0)
 
-    from .recovery_bundle import (
-        RecoveryBundleCreator,
-        SecretSharing,
-        generate_age_keypair,
-    )
+        click.confirm(
+            click.style(
+                f"Proceed with removing {len(removable_swhids)} objects?",
+                fg="yellow",
+                bold=True,
+            ),
+            abort=True,
+        )
 
-    object_public_key, object_secret_key = generate_age_keypair()
-    secret_sharing = SecretSharing.from_dict(conf["recovery_bundles"]["secret_sharing"])
-    decryption_key_shares = secret_sharing.generate_encrypted_shares(
-        identifier, object_secret_key
-    )
-    click.secho("Creating recovery bundle…", fg="cyan")
-    with RecoveryBundleCreator(
-        path=recovery_bundle,
-        storage=storage,
-        removal_identifier=identifier,
-        object_public_key=object_public_key,
-        decryption_key_shares=decryption_key_shares,
-    ) as creator:
-        if reason is not None:
-            creator.set_reason(reason)
-        if expire is not None:
-            try:
-                creator.set_expire(expire.astimezone())
-            except ValueError as ex:
-                click.echo(f"Invalid expiration date: {str(ex)}", err=True)
-                ctx.exit(1)
-        creator.backup_swhids(removable_swhids)
-    click.secho("Recovery bundle created.", fg="green")
-    raise NotImplementedError("Actual removal still need to be written")
+        remover.create_recovery_bundle(
+            secret_sharing_conf=conf["recovery_bundles"]["secret_sharing"],
+            removable_swhids=removable_swhids,
+            recovery_bundle_path=recovery_bundle,
+            removal_identifier=identifier,
+            reason=reason,
+            expire=expire.astimezone() if expire else None,
+        )
+        remover.remove(removable_swhids)
+    except RemoverError as e:
+        click.secho(e.args[0], err=True, fg="red")
+        ctx.exit(1)
 
 
 @alter_cli_group.group(name="recovery-bundle", context_settings=CONTEXT_SETTINGS)
