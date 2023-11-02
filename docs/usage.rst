@@ -155,6 +155,11 @@ Objects will be removed from the storage defined in the configuration.
    - Objects in the _journal_ will not be removed.
    - Search data in Elasticsearch will not be removed.
 
+If during the removal process a reference is added to one of the removed
+objects, the process will be rolled back. This will also be the case
+if any error happens during the process. The recovery bundle will be left
+intact.
+
 Options:
 
 ``--dry-run``

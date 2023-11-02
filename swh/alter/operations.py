@@ -8,7 +8,7 @@ import logging
 from typing import Dict, List, Optional, Protocol, TextIO
 
 from swh.graph.http_client import RemoteGraphClient
-from swh.model.swhids import ExtendedSWHID
+from swh.model.swhids import ExtendedObjectType, ExtendedSWHID
 from swh.storage.interface import ObjectDeletionInterface, StorageInterface
 
 from .inventory import make_inventory
@@ -127,3 +127,20 @@ class Remover:
         _secho(
             f"{sum(result.values())} objects removed from primary storage.", fg="green"
         )
+        if self.have_new_references(swhids):
+            raise RemoverError("New references have been added to removed objects")
+
+    def have_new_references(self, removed_swhids: List[ExtendedSWHID]) -> bool:
+        """Find out if any removed objects now have a new references coming from
+        an object outside the set of removed objects."""
+
+        swhids = set(removed_swhids)
+        for swhid in swhids:
+            if swhid.object_type == ExtendedObjectType.ORIGIN:
+                continue
+            recent_references = self.storage.object_find_recent_references(
+                swhid, 9_999_999
+            )
+            if not swhids.issuperset(set(recent_references)):
+                return True
+        return False
