@@ -14,6 +14,7 @@ from swh.storage.interface import ObjectDeletionInterface, StorageInterface
 from .inventory import make_inventory
 from .recovery_bundle import (
     AgeSecretKey,
+    RecoveryBundle,
     RecoveryBundleCreator,
     SecretSharing,
     generate_age_keypair,
@@ -42,6 +43,7 @@ class Remover:
     def __init__(self, storage: StorageWithDelete, graph_client: RemoteGraphClient):
         self.storage = storage
         self.graph_client = graph_client
+        self.recovery_bundle_path: Optional[str] = None
         self.object_secret_key: Optional[AgeSecretKey] = None
 
     def get_removable(
@@ -104,7 +106,20 @@ class Remover:
                 except ValueError as ex:
                     raise RemoverError(f"Unable to set expiration date: {str(ex)}")
             creator.backup_swhids(removable_swhids)
+        self.recovery_bundle_path = recovery_bundle_path
         _secho("Recovery bundle created.", fg="green")
+
+    def restore_recovery_bundle(self) -> None:
+        assert self.recovery_bundle_path
+
+        def key_provider(_):
+            assert self.object_secret_key
+            return self.object_secret_key
+
+        _secho("Restoring recovery bundle…", fg="cyan")
+        bundle = RecoveryBundle(self.recovery_bundle_path, key_provider)
+        result = bundle.restore(self.storage)
+        _secho(f"{sum(result.values())} objects restored.", fg="green")
 
     def remove(self, swhids: List[ExtendedSWHID]) -> None:
         _secho("Removing objects from primary storage…", fg="cyan")

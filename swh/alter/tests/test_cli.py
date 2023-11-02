@@ -6,6 +6,7 @@
 from datetime import datetime, timedelta
 import os
 import shutil
+from typing import List
 
 from click.testing import CliRunner
 import pytest
@@ -290,6 +291,40 @@ def test_cli_remove_can_be_canceled(
     )
     assert result.exit_code != 0
     assert "Aborted" in result.output
+
+
+def test_cli_remove_restores_bundle_when_remove_fails(
+    mocker,
+    remover_for_bundle_creation,
+    remove_config,
+    remove_input_proceed_with_removal,
+):
+    remover = remover_for_bundle_creation
+
+    def fake_remove(swhids: List[ExtendedSWHID]) -> None:
+        from ..operations import RemoverError
+
+        raise RemoverError("test")
+
+    mocker.patch.object(remover, "remove", wraps=fake_remove)
+    mocker.patch.object(remover, "restore_recovery_bundle")
+    runner = CliRunner()
+    result = runner.invoke(
+        remove,
+        [
+            "--identifier",
+            "this-is-not-my-departement",
+            "--recovery-bundle",
+            "test.swh-recovery-bundle",
+            "swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165",
+        ],
+        input=remove_input_proceed_with_removal,
+        obj={"config": remove_config},
+        catch_exceptions=False,
+    )
+    print(result.output)
+    assert result.exit_code == 1
+    remover.restore_recovery_bundle.assert_called_once()
 
 
 def test_cli_recovery_bundle_extract_content_using_decryption_key_to_file(

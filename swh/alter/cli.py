@@ -231,9 +231,14 @@ def remove(
             reason=reason,
             expire=expire.astimezone() if expire else None,
         )
-        remover.remove(removable_swhids)
     except RemoverError as e:
         click.secho(e.args[0], err=True, fg="red")
+        ctx.exit(1)
+    try:
+        remover.remove(removable_swhids)
+    except Exception as e:
+        click.secho(str(e), err=True, fg="red", bold=True)
+        remover.restore_recovery_bundle()
         ctx.exit(1)
 
 

@@ -191,3 +191,28 @@ def test_remover_remove_from_storage(
     storage.object_delete.assert_called_once()
     args, kwargs = storage.object_delete.call_args
     assert set(args[0]) == {ExtendedSWHID.from_string(swhid) for swhid in swhids}
+
+
+def test_remover_restore_recovery_bundle(
+    mocker,
+    remover,
+    secret_sharing_conf,
+    tmp_path,
+):
+    bundle_path = tmp_path / "test.swh-recovery-bundle"
+    mock = mocker.patch("swh.alter.operations.RecoveryBundle", autospec=True)
+    instance = mock.return_value
+    instance.restore.return_value = {"origin": 1}
+
+    swhids = [
+        ExtendedSWHID.from_string("swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165")
+    ]
+    remover.create_recovery_bundle(
+        secret_sharing_conf,
+        removable_swhids=swhids,
+        recovery_bundle_path=bundle_path,
+        removal_identifier="test",
+    )
+    remover.restore_recovery_bundle()
+
+    instance.restore.assert_called_once()
