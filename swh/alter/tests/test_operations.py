@@ -168,3 +168,26 @@ def test_remover_create_recovery_bundle_fails_with_expire_in_the_past(
             reason="doing a test",
             expire=expire,
         )
+
+
+def test_remover_remove_from_storage(
+    mocker,
+    storage_with_references_from_forked_origin,  # noqa:F811
+    remover,
+):
+    storage = storage_with_references_from_forked_origin
+    swhids = [
+        "swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165",
+        "swh:1:snp:0000000000000000000000000000000000000022",
+        "swh:1:rel:0000000000000000000000000000000000000021",
+        "swh:1:rev:0000000000000000000000000000000000000018",
+        "swh:1:rev:0000000000000000000000000000000000000013",
+        "swh:1:dir:0000000000000000000000000000000000000017",
+        "swh:1:cnt:0000000000000000000000000000000000000015",
+        "swh:1:cnt:0000000000000000000000000000000000000014",
+    ]
+    mocker.patch.object(storage, "object_delete", return_value={"origin:delete": 0})
+    remover.remove([ExtendedSWHID.from_string(swhid) for swhid in swhids])
+    storage.object_delete.assert_called_once()
+    args, kwargs = storage.object_delete.call_args
+    assert set(args[0]) == {ExtendedSWHID.from_string(swhid) for swhid in swhids}

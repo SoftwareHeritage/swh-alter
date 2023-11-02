@@ -5,11 +5,11 @@
 
 from datetime import datetime
 import logging
-from typing import Dict, List, Optional, TextIO
+from typing import Dict, List, Optional, Protocol, TextIO
 
 from swh.graph.http_client import RemoteGraphClient
 from swh.model.swhids import ExtendedSWHID
-from swh.storage.interface import StorageInterface
+from swh.storage.interface import ObjectDeletionInterface, StorageInterface
 
 from .inventory import make_inventory
 from .recovery_bundle import (
@@ -21,6 +21,10 @@ from .recovery_bundle import (
 from .removable import mark_removable
 
 logger = logging.getLogger(__name__)
+
+
+class StorageWithDelete(StorageInterface, ObjectDeletionInterface, Protocol):
+    pass
 
 
 class RemoverError(Exception):
@@ -35,7 +39,7 @@ def _secho(msg, **kwargs):
 class Remover:
     """Helper class used to perform a removal."""
 
-    def __init__(self, storage: StorageInterface, graph_client: RemoteGraphClient):
+    def __init__(self, storage: StorageWithDelete, graph_client: RemoteGraphClient):
         self.storage = storage
         self.graph_client = graph_client
         self.object_secret_key: Optional[AgeSecretKey] = None
@@ -103,4 +107,8 @@ class Remover:
         _secho("Recovery bundle created.", fg="green")
 
     def remove(self, swhids: List[ExtendedSWHID]) -> None:
-        raise NotImplementedError("Actual removal still need to be written")
+        _secho("Removing objects from primary storage…", fg="cyan")
+        result = self.storage.object_delete(swhids)
+        _secho(
+            f"{sum(result.values())} objects removed from primary storage.", fg="green"
+        )

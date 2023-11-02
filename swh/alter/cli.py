@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, List, Optional, Set
+from typing import TYPE_CHECKING, List, Optional, Set, cast
 
 import click
 
@@ -187,7 +187,7 @@ def remove(
     from swh.graph.http_client import RemoteGraphClient
     from swh.storage import get_storage
 
-    from .operations import Remover, RemoverError, logger
+    from .operations import Remover, RemoverError, StorageWithDelete, logger
 
     logger.propagate = False
     logger.addHandler(ClickLoggingHandler())
@@ -195,9 +195,12 @@ def remove(
 
     conf = ctx.obj["config"]
     storage = get_storage(**conf["storage"])
+    assert hasattr(
+        storage, "object_delete"
+    ), "storage does not implement ObjectDeletionInterface"
     graph_client = RemoteGraphClient(**conf["graph"])
 
-    remover = Remover(storage, graph_client)
+    remover = Remover(cast(StorageWithDelete, storage), graph_client)
     try:
         removable_swhids = remover.get_removable(
             swhids,

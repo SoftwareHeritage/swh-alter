@@ -119,7 +119,7 @@ Removing objects from the archive
 ---------------------------------
 
 ``swh alter remove`` will remove a given set of origins, and any objects they
-reference (as long as it not referenced elsewhere).
+reference (as long as it not referenced elsewhere), from the archive.
 
 .. code:: console
 
@@ -142,9 +142,18 @@ reference (as long as it not referenced elsewhere).
     Proceed with removing 29 objects? [y/N]: y
     Creating recovery bundle…
     Recovery bundle created.
-    […]
-    NotImplementedError: Actual removal still need to be written
+    Removing objects from primary storage…
+    29 objects removed from primary storage.
 
+Objects will be removed from the storage defined in the configuration.
+
+.. warning::
+
+   The implementation of removal is not yet fully complete:
+
+   - Contents in _objstorage_ will not be removed.
+   - Objects in the _journal_ will not be removed.
+   - Search data in Elasticsearch will not be removed.
 
 Options:
 
@@ -164,11 +173,6 @@ Options:
 
 ``--expire YYYY-MM-DD``
     Date when the recovery bundle should be removed.
-
-.. warning::
-
-   Implementing actual removal is still pending. ``swh alter remove`` will
-   currently stops with an error after generating the recovery bundle.
 
 Restoring from a recovery bundle
 --------------------------------
