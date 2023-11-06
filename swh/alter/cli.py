@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, List, Optional, Set, cast
+from typing import TYPE_CHECKING, Dict, List, Optional, Set, cast
 
 import click
 
@@ -89,11 +89,32 @@ def alter_cli_group(ctx):
           cls: postgresql
           db: "service=…"
           objstorage:
-            cls: memory
+            cls: remote
+            url: http://nginx:5080/objstorage
+          journal_writer:
+            cls: kafka
+            brokers:
+            - kafka
+            prefix: swh.journal.objects
+            client_id: swh.alter
+            anonymize: true
+
         \b
         graph:
           cls: remote
           url: "http://granet.internal.softwareheritage.org:5009"
+        \b
+        extra_storages:
+          cassandra:
+            cls: cassandra
+            hosts:
+            - cassandra-seed.example.org
+            keyspace: swh
+          another-mirror:
+            cls: postgresql
+            db: "host=…"
+            objstorage:
+                cls: memory
         \b
         recovery_bundles:
           secret_sharing:
@@ -186,6 +207,7 @@ def remove(
     """Remove the given SWHIDs or URLs from the archive."""
     from swh.graph.http_client import RemoteGraphClient
     from swh.storage import get_storage
+    from swh.storage.interface import ObjectDeletionInterface
 
     from .operations import Remover, RemoverError, StorageWithDelete, logger
 
@@ -194,13 +216,29 @@ def remove(
     logger.setLevel(logging.INFO)
 
     conf = ctx.obj["config"]
+    graph_client = RemoteGraphClient(**conf["graph"])
+
     storage = get_storage(**conf["storage"])
     assert hasattr(
         storage, "object_delete"
-    ), "storage does not implement ObjectDeletionInterface"
-    graph_client = RemoteGraphClient(**conf["graph"])
+    ), "primary storage does not implement ObjectDeletionInterface"
 
-    remover = Remover(cast(StorageWithDelete, storage), graph_client)
+    if "extra_storages" in conf:
+        extra_storages = {
+            name: get_storage(**d) for name, d in conf["extra_storages"].items()
+        }
+        for name in extra_storages.keys():
+            assert hasattr(
+                extra_storages[name], "object_delete"
+            ), f"storage “{name}” does not implement ObjectDeletionInterface"
+    else:
+        extra_storages = {}
+
+    remover = Remover(
+        cast(StorageWithDelete, storage),
+        graph_client,
+        cast(Dict[str, ObjectDeletionInterface], extra_storages),
+    )
     try:
         removable_swhids = remover.get_removable(
             swhids,

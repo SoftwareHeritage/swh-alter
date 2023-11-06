@@ -40,9 +40,16 @@ def _secho(msg, **kwargs):
 class Remover:
     """Helper class used to perform a removal."""
 
-    def __init__(self, storage: StorageWithDelete, graph_client: RemoteGraphClient):
+    def __init__(
+        self,
+        /,
+        storage: StorageWithDelete,
+        graph_client: RemoteGraphClient,
+        extra_storages: Optional[Dict[str, ObjectDeletionInterface]] = None,
+    ):
         self.storage = storage
         self.graph_client = graph_client
+        self.extra_storages = extra_storages if extra_storages else {}
         self.recovery_bundle_path: Optional[str] = None
         self.object_secret_key: Optional[AgeSecretKey] = None
 
@@ -127,6 +134,13 @@ class Remover:
         _secho(
             f"{sum(result.values())} objects removed from primary storage.", fg="green"
         )
+        for name, extra_storage in self.extra_storages.items():
+            _secho(f"Removing objects from storage “{name}”…", fg="cyan")
+            result = extra_storage.object_delete(swhids)
+            _secho(
+                f"{sum(result.values())} objects removed from storage “{name}”.",
+                fg="green",
+            )
         if self.have_new_references(swhids):
             raise RemoverError("New references have been added to removed objects")
 

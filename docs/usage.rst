@@ -49,6 +49,13 @@ The tools will not work without a configuration file. It can be created as
       cls: remote
       url: "http://granet.internal.softwareheritage.org:5009"
 
+    extra_storages:
+      cassandra:
+        cls: cassandra
+        hosts:
+        - cassandra-seed
+        keyspace: swh
+
     recovery_bundles:
       secret_sharing:
         minimum_required_groups: 2
@@ -72,6 +79,11 @@ See the :ref:`configuration reference <cli-config>` for general information
 about the Software Heritage configuration file. In most cases, ``swh-alter``
 requires the :ref:`storage <cli-config-storage>` and :ref:`graph <cli-config-graph>`
 sections to be configured properly.
+
+The ``storage`` section will define the “primary” storage from which information
+will be read, objects will be deleted, and to which recovery bundles will be
+restored. ``extra_storage`` may configure more storage components from which
+objects will only be deleted on remove.
 
 In addition, the organization of the secret sharing process needs to be defined
 in ``secret_sharing``.
@@ -144,8 +156,11 @@ reference (as long as it not referenced elsewhere), from the archive.
     Recovery bundle created.
     Removing objects from primary storage…
     29 objects removed from primary storage.
+    Removing objects from storage “cassandra”…
+    29 objects removed from storage “cassandra”.
 
-Objects will be removed from the storage defined in the configuration.
+Objects will be removed from the “primary” storage defined in the configuration
+and any other instances defined in a ``extra_storage`` section.
 
 .. warning::
 
@@ -156,8 +171,9 @@ Objects will be removed from the storage defined in the configuration.
    - Search data in Elasticsearch will not be removed.
 
 If during the removal process a reference is added to one of the removed
-objects, the process will be rolled back. This will also be the case
-if any error happens during the process. The recovery bundle will be left
+objects, the process will be rolled back: the recovery bundle will be used to
+restore objects as they were to the “primary” storage. This will also be the
+case if any error happens during the process. The recovery bundle will be left
 intact.
 
 Options:
@@ -183,9 +199,9 @@ Restoring from a recovery bundle
 --------------------------------
 
 ``swh alter recovery-bundle restore`` will restore all objects contained in a
-recovery bundle. In order to proceed, this command requires enough shared
-secrets to be recovered. Alternatively, the bundle decryption key can be
-provided.
+recovery bundle to the “primary” storage. In order to proceed, this command
+requires enough shared secrets to be recovered. Alternatively, the bundle
+decryption key can be provided.
 
 This command also requires the appropriate permissions needed to update Software
 Heritage storage, journal and object storage.

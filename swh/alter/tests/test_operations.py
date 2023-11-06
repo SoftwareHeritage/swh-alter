@@ -194,6 +194,30 @@ def test_remover_remove_from_storage(
     assert set(args[0]) == {ExtendedSWHID.from_string(swhid) for swhid in swhids}
 
 
+def test_remover_remove_from_extra_storage(
+    mocker,
+):
+    primary_storage = mocker.MagicMock()
+    graph_client = mocker.MagicMock()
+    extra_storage_one = mocker.MagicMock()
+    extra_storage_one.object_delete.return_value = {"origin:delete": 0}
+    extra_storage_two = mocker.MagicMock()
+    extra_storage_two.object_delete.return_value = {"origin:delete": 0}
+    remover = Remover(
+        primary_storage,
+        graph_client,
+        extra_storages={"one": extra_storage_one, "two": extra_storage_two},
+    )
+    swhids = [
+        ExtendedSWHID.from_string("swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165"),
+    ]
+    remover.remove(swhids)
+    for extra in (extra_storage_one, extra_storage_two):
+        extra.object_delete.assert_called_once()
+        args, _ = extra.object_delete.call_args
+        assert set(args[0]) == set(swhids)
+
+
 def test_remover_have_new_references_outside_removed(
     mocker,
     storage_with_references_from_forked_origin,  # noqa:F811
