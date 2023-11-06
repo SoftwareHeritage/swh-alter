@@ -60,7 +60,7 @@ DEFAULT_CONFIG = {
         },
     },
     "graph": {
-        "url": "http://granet.internal.softwareheritage.org:5009",
+        "url": "http://granet.internal.softwareheritage.org:5009/graph",
         # timeout is in seconds
         # see https://requests.readthedocs.io/en/latest/user/advanced/#timeouts
         "timeout": 10,
@@ -101,8 +101,7 @@ def alter_cli_group(ctx):
 
         \b
         graph:
-          cls: remote
-          url: "http://granet.internal.softwareheritage.org:5009"
+          url: "http://granet.internal.softwareheritage.org:5009/graph"
         \b
         extra_storages:
           cassandra:

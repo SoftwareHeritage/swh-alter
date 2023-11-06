@@ -46,8 +46,7 @@ The tools will not work without a configuration file. It can be created as
         url: https://objstorage.softwareheritage.org
 
     graph:
-      cls: remote
-      url: "http://granet.internal.softwareheritage.org:5009"
+      url: "http://granet.internal.softwareheritage.org:5009/graph"
 
     extra_storages:
       cassandra:
