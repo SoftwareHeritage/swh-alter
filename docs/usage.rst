@@ -46,8 +46,14 @@ The tools will not work without a configuration file. It can be created as
         url: https://objstorage.softwareheritage.org
 
     graph:
-      cls: remote
-      url: "http://granet.internal.softwareheritage.org:5009"
+      url: "http://granet.internal.softwareheritage.org:5009/graph"
+
+    extra_storages:
+      cassandra:
+        cls: cassandra
+        hosts:
+        - cassandra-seed
+        keyspace: swh
 
     recovery_bundles:
       secret_sharing:
@@ -72,6 +78,11 @@ See the :ref:`configuration reference <cli-config>` for general information
 about the Software Heritage configuration file. In most cases, ``swh-alter``
 requires the :ref:`storage <cli-config-storage>` and :ref:`graph <cli-config-graph>`
 sections to be configured properly.
+
+The ``storage`` section will define the “primary” storage from which information
+will be read, objects will be deleted, and to which recovery bundles will be
+restored. ``extra_storage`` may configure more storage components from which
+objects will only be deleted on remove.
 
 In addition, the organization of the secret sharing process needs to be defined
 in ``secret_sharing``.
@@ -119,7 +130,7 @@ Removing objects from the archive
 ---------------------------------
 
 ``swh alter remove`` will remove a given set of origins, and any objects they
-reference (as long as it not referenced elsewhere).
+reference (as long as it not referenced elsewhere), from the archive.
 
 .. code:: console
 
@@ -142,9 +153,27 @@ reference (as long as it not referenced elsewhere).
     Proceed with removing 29 objects? [y/N]: y
     Creating recovery bundle…
     Recovery bundle created.
-    […]
-    NotImplementedError: Actual removal still need to be written
+    Removing objects from primary storage…
+    29 objects removed from primary storage.
+    Removing objects from storage “cassandra”…
+    29 objects removed from storage “cassandra”.
 
+Objects will be removed from the “primary” storage defined in the configuration
+and any other instances defined in a ``extra_storage`` section.
+
+.. warning::
+
+   The implementation of removal is not yet fully complete:
+
+   - Contents in _objstorage_ will not be removed.
+   - Objects in the _journal_ will not be removed.
+   - Search data in Elasticsearch will not be removed.
+
+If during the removal process a reference is added to one of the removed
+objects, the process will be rolled back: the recovery bundle will be used to
+restore objects as they were to the “primary” storage. This will also be the
+case if any error happens during the process. The recovery bundle will be left
+intact.
 
 Options:
 
@@ -165,18 +194,13 @@ Options:
 ``--expire YYYY-MM-DD``
     Date when the recovery bundle should be removed.
 
-.. warning::
-
-   Implementing actual removal is still pending. ``swh alter remove`` will
-   currently stops with an error after generating the recovery bundle.
-
 Restoring from a recovery bundle
 --------------------------------
 
 ``swh alter recovery-bundle restore`` will restore all objects contained in a
-recovery bundle. In order to proceed, this command requires enough shared
-secrets to be recovered. Alternatively, the bundle decryption key can be
-provided.
+recovery bundle to the “primary” storage. In order to proceed, this command
+requires enough shared secrets to be recovered. Alternatively, the bundle
+decryption key can be provided.
 
 This command also requires the appropriate permissions needed to update Software
 Heritage storage, journal and object storage.

@@ -1,6 +1,12 @@
+# Copyright (C) 2023 The Software Heritage developers
+# See the AUTHORS file at the top-level directory of this distribution
+# License: GNU General Public License version 3, or any later version
+# See top-level LICENSE file for more information
+
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, List, Optional, Set
+import logging
+from typing import TYPE_CHECKING, Dict, List, Optional, Set, cast
 
 import click
 
@@ -34,6 +40,17 @@ class SwhidOrUrlParamType(click.ParamType):
             return swhid
 
 
+class ClickLoggingHandler(logging.Handler):
+    """Handler displaying logs using click.secho(), passing the style extra
+    attribute."""
+
+    def emit(self, record):
+        if hasattr(record, "style"):
+            click.secho(self.format(record), **record.style)
+        else:
+            click.echo(self.format(record))
+
+
 DEFAULT_CONFIG = {
     "storage": {
         "cls": "postgresql",
@@ -43,7 +60,7 @@ DEFAULT_CONFIG = {
         },
     },
     "graph": {
-        "url": "http://granet.internal.softwareheritage.org:5009",
+        "url": "http://granet.internal.softwareheritage.org:5009/graph",
         # timeout is in seconds
         # see https://requests.readthedocs.io/en/latest/user/advanced/#timeouts
         "timeout": 10,
@@ -72,11 +89,31 @@ def alter_cli_group(ctx):
           cls: postgresql
           db: "service=…"
           objstorage:
-            cls: memory
+            cls: remote
+            url: http://nginx:5080/objstorage
+          journal_writer:
+            cls: kafka
+            brokers:
+            - kafka
+            prefix: swh.journal.objects
+            client_id: swh.alter
+            anonymize: true
+
         \b
         graph:
-          cls: remote
-          url: "http://granet.internal.softwareheritage.org:5009"
+          url: "http://granet.internal.softwareheritage.org:5009/graph"
+        \b
+        extra_storages:
+          cassandra:
+            cls: cassandra
+            hosts:
+            - cassandra-seed.example.org
+            keyspace: swh
+          another-mirror:
+            cls: postgresql
+            db: "host=…"
+            objstorage:
+                cls: memory
         \b
         recovery_bundles:
           secret_sharing:
@@ -169,76 +206,77 @@ def remove(
     """Remove the given SWHIDs or URLs from the archive."""
     from swh.graph.http_client import RemoteGraphClient
     from swh.storage import get_storage
+    from swh.storage.interface import ObjectDeletionInterface
 
-    from .inventory import make_inventory
-    from .removable import mark_removable
+    from .operations import Remover, RemoverError, StorageWithDelete, logger
+
+    logger.propagate = False
+    logger.addHandler(ClickLoggingHandler())
+    logger.setLevel(logging.INFO)
 
     conf = ctx.obj["config"]
-    storage = get_storage(**conf["storage"])
     graph_client = RemoteGraphClient(**conf["graph"])
 
-    click.echo("Removing the following origins:")
-    for swhid in swhids:
-        click.echo(f" - {swhid}")
-    click.secho("Inventorying all reachable objects…", fg="cyan")
-    inventory_subgraph = make_inventory(storage, graph_client, swhids)
-    if output_inventory_subgraph:
-        inventory_subgraph.write_dot(output_inventory_subgraph)
-        output_inventory_subgraph.close()
-    click.secho("Determining which objects can be safely removed…", fg="cyan")
-    removable_subgraph = mark_removable(storage, graph_client, inventory_subgraph)
-    if output_removable_subgraph:
-        removable_subgraph.write_dot(output_removable_subgraph)
-        output_removable_subgraph.close()
-    removable_subgraph.delete_unremovable()
-    if output_pruned_removable_subgraph:
-        removable_subgraph.write_dot(output_pruned_removable_subgraph)
-        output_pruned_removable_subgraph.close()
-    removable_swhids = list(removable_subgraph.removable_swhids())
-    if dry_run:
-        click.echo(f"We would remove {len(removable_swhids)} objects:")
-        for swhid in removable_swhids:
-            click.echo(f" - {swhid}")
-        return
-    click.confirm(
-        click.style(
-            f"Proceed with removing {len(removable_swhids)} objects?",
-            fg="yellow",
-            bold=True,
-        ),
-        abort=True,
-    )
+    storage = get_storage(**conf["storage"])
+    assert hasattr(
+        storage, "object_delete"
+    ), "primary storage does not implement ObjectDeletionInterface"
 
-    from .recovery_bundle import (
-        RecoveryBundleCreator,
-        SecretSharing,
-        generate_age_keypair,
-    )
+    if "extra_storages" in conf:
+        extra_storages = {
+            name: get_storage(**d) for name, d in conf["extra_storages"].items()
+        }
+        for name in extra_storages.keys():
+            assert hasattr(
+                extra_storages[name], "object_delete"
+            ), f"storage “{name}” does not implement ObjectDeletionInterface"
+    else:
+        extra_storages = {}
 
-    object_public_key, object_secret_key = generate_age_keypair()
-    secret_sharing = SecretSharing.from_dict(conf["recovery_bundles"]["secret_sharing"])
-    decryption_key_shares = secret_sharing.generate_encrypted_shares(
-        identifier, object_secret_key
+    remover = Remover(
+        cast(StorageWithDelete, storage),
+        graph_client,
+        cast(Dict[str, ObjectDeletionInterface], extra_storages),
     )
-    click.secho("Creating recovery bundle…", fg="cyan")
-    with RecoveryBundleCreator(
-        path=recovery_bundle,
-        storage=storage,
-        removal_identifier=identifier,
-        object_public_key=object_public_key,
-        decryption_key_shares=decryption_key_shares,
-    ) as creator:
-        if reason is not None:
-            creator.set_reason(reason)
-        if expire is not None:
-            try:
-                creator.set_expire(expire.astimezone())
-            except ValueError as ex:
-                click.echo(f"Invalid expiration date: {str(ex)}", err=True)
-                ctx.exit(1)
-        creator.backup_swhids(removable_swhids)
-    click.secho("Recovery bundle created.", fg="green")
-    raise NotImplementedError("Actual removal still need to be written")
+    try:
+        removable_swhids = remover.get_removable(
+            swhids,
+            output_inventory_subgraph=output_inventory_subgraph,
+            output_removable_subgraph=output_removable_subgraph,
+            output_pruned_removable_subgraph=output_pruned_removable_subgraph,
+        )
+        if dry_run:
+            click.echo(f"We would remove {len(removable_swhids)} objects:")
+            for swhid in removable_swhids:
+                click.echo(f" - {swhid}")
+            ctx.exit(0)
+
+        click.confirm(
+            click.style(
+                f"Proceed with removing {len(removable_swhids)} objects?",
+                fg="yellow",
+                bold=True,
+            ),
+            abort=True,
+        )
+
+        remover.create_recovery_bundle(
+            secret_sharing_conf=conf["recovery_bundles"]["secret_sharing"],
+            removable_swhids=removable_swhids,
+            recovery_bundle_path=recovery_bundle,
+            removal_identifier=identifier,
+            reason=reason,
+            expire=expire.astimezone() if expire else None,
+        )
+    except RemoverError as e:
+        click.secho(e.args[0], err=True, fg="red")
+        ctx.exit(1)
+    try:
+        remover.remove(removable_swhids)
+    except Exception as e:
+        click.secho(str(e), err=True, fg="red", bold=True)
+        remover.restore_recovery_bundle()
+        ctx.exit(1)
 
 
 @alter_cli_group.group(name="recovery-bundle", context_settings=CONTEXT_SETTINGS)
