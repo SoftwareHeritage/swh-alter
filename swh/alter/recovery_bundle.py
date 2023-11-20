@@ -3,6 +3,7 @@
 # License: GNU General Public License version 3, or any later version
 # See top-level LICENSE file for more information
 
+from abc import abstractmethod
 import contextlib
 from datetime import datetime, timezone
 import itertools
@@ -23,6 +24,7 @@ from typing import (
     Iterator,
     List,
     Optional,
+    Protocol,
     Set,
     TextIO,
     Tuple,
@@ -50,7 +52,7 @@ from swh.model.model import (
     SkippedContent,
     Snapshot,
 )
-from swh.model.swhids import ExtendedObjectType, ExtendedSWHID
+from swh.model.swhids import CoreSWHID, ExtendedObjectType, ExtendedSWHID
 import swh.storage.algos.directory
 import swh.storage.algos.snapshot
 from swh.storage.interface import HashDict, StorageInterface
@@ -677,6 +679,16 @@ def _from_hashes(
     return d
 
 
+class HasSwhid(Protocol):
+    @property
+    def object_type(self) -> str:
+        ...
+
+    @abstractmethod
+    def swhid(self) -> Union[CoreSWHID, Optional[CoreSWHID], ExtendedSWHID]:
+        ...
+
+
 class RecoveryBundleCreator:
     def __init__(
         self,
@@ -685,6 +697,7 @@ class RecoveryBundleCreator:
         removal_identifier: str,
         object_public_key: AgePublicKey,
         decryption_key_shares: Dict[str, str],
+        registration_callback: Optional[Callable[[HasSwhid], None]] = None,
     ):
         self._path = path
         self._storage = storage
@@ -692,6 +705,10 @@ class RecoveryBundleCreator:
         self._created = datetime.now(timezone.utc)
         self._pk = object_public_key
         self._decryption_key_shares = decryption_key_shares
+        if registration_callback:
+            self._registration_callback = registration_callback
+        else:
+            self._registration_callback = lambda _: None
 
     def __enter__(self) -> Self:
         self._zip = ZipFile(self._path, "x")
@@ -759,6 +776,7 @@ class RecoveryBundleCreator:
                     raise ValueError(f"Unable to find {swhid} in storage")
                 for index, skipped_content in enumerate(skipped_contents, start=1):
                     self._add_skipped_content(swhid, index, skipped_content)
+                    self._registration_callback(skipped_content)
             else:
                 data = self._storage.content_get_data(_from_hashes(**content.hashes()))
                 if data is None:
@@ -772,6 +790,7 @@ class RecoveryBundleCreator:
                     _swhid_to_arcname(swhid),
                     value_to_kafka(populated_content.to_dict()),
                 )
+                self._registration_callback(populated_content)
 
     def _add_directories(self, directory_swhids: List[ExtendedSWHID]):
         assert all(
@@ -791,6 +810,7 @@ class RecoveryBundleCreator:
             _corrupted, directory = result
             # If it's corrupted we still should backup it anyway
             self._write(_swhid_to_arcname(swhid), value_to_kafka(directory.to_dict()))
+            self._registration_callback(directory)
 
     def _add_revisions(self, revision_swhids: List[ExtendedSWHID]):
         assert all(
@@ -806,6 +826,7 @@ class RecoveryBundleCreator:
             if revision is None:
                 raise ValueError(f"Unable to find {swhid} in storage")
             self._write(_swhid_to_arcname(swhid), value_to_kafka(revision.to_dict()))
+            self._registration_callback(revision)
 
     def _add_releases(self, release_swhids: List[ExtendedSWHID]):
         assert all(
@@ -820,6 +841,7 @@ class RecoveryBundleCreator:
             if release is None:
                 raise ValueError(f"Unable to find {swhid} in storage")
             self._write(_swhid_to_arcname(swhid), value_to_kafka(release.to_dict()))
+            self._registration_callback(release)
 
     def _add_snapshots(self, snapshot_swhids: List[ExtendedSWHID]):
         assert all(
@@ -833,6 +855,7 @@ class RecoveryBundleCreator:
             if snapshot is None:
                 raise ValueError(f"Unable to find {swhid} in storage")
             self._write(_swhid_to_arcname(swhid), value_to_kafka(snapshot.to_dict()))
+            self._registration_callback(snapshot)
 
     def _add_origin_visit(self, basename: str, visit: OriginVisit):
         arcname = f"origin_visits/{basename}_" f"{visit.visit}.age"
@@ -862,6 +885,7 @@ class RecoveryBundleCreator:
             basename = str(swhid).replace(":", "_")
             arcname = f"origins/{basename}.age"
             self._write(arcname, value_to_kafka(origin_d))
+            self._registration_callback(origin)
             for origin_visit_with_statuses in stream_results(
                 self._storage.origin_visit_get_with_statuses, origin.url
             ):

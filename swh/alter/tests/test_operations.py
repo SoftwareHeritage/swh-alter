@@ -28,6 +28,7 @@ from .test_removable import storage_with_references_from_forked_origin  # noqa: 
 
 @pytest.fixture
 def remover(
+    mocker,
     storage_with_references_from_forked_origin,  # noqa: F811
     graph_client_with_only_initial_origin,  # noqa: F811
 ):
@@ -188,7 +189,8 @@ def test_remover_remove_from_storage(
         "swh:1:cnt:0000000000000000000000000000000000000014",
     ]
     mocker.patch.object(storage, "object_delete", return_value={"origin:delete": 0})
-    remover.remove([ExtendedSWHID.from_string(swhid) for swhid in swhids])
+    remover.swhids_to_remove = [ExtendedSWHID.from_string(swhid) for swhid in swhids]
+    remover.remove()
     storage.object_delete.assert_called_once()
     args, kwargs = storage.object_delete.call_args
     assert set(args[0]) == {ExtendedSWHID.from_string(swhid) for swhid in swhids}
@@ -208,14 +210,14 @@ def test_remover_remove_from_extra_storage(
         graph_client,
         extra_storages={"one": extra_storage_one, "two": extra_storage_two},
     )
-    swhids = [
+    remover.swhids_to_remove = [
         ExtendedSWHID.from_string("swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165"),
     ]
-    remover.remove(swhids)
+    remover.remove()
     for extra in (extra_storage_one, extra_storage_two):
         extra.object_delete.assert_called_once()
         args, _ = extra.object_delete.call_args
-        assert set(args[0]) == set(swhids)
+        assert set(args[0]) == set(remover.swhids_to_remove)
 
 
 def test_remover_have_new_references_outside_removed(
@@ -316,8 +318,9 @@ def test_remover_remove_fails_when_new_references_have_been_added(
         "swh:1:cnt:0000000000000000000000000000000000000014",
     ]
     mocker.patch.object(remover, "have_new_references", return_value=True)
+    remover.swhids_to_remove = [ExtendedSWHID.from_string(swhid) for swhid in swhids]
     with pytest.raises(RemoverError, match="New references"):
-        remover.remove([ExtendedSWHID.from_string(swhid) for swhid in swhids])
+        remover.remove()
 
 
 def test_remover_restore_recovery_bundle(

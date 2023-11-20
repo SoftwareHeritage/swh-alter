@@ -574,12 +574,19 @@ def test_create_recovery_bundle(
         "swh:1:ori:33abd4b4c5db79c7387673f71302750fd73e0645",
         "swh:1:ori:9147ab9c9287940d4fdbe95d8780664d7ad2dfc0",
     ]
+
+    swhids_found = []
+
+    def register(obj):
+        swhids_found.append(str(obj.swhid()))
+
     with RecoveryBundleCreator(
         path=bundle_path,
         storage=sample_populated_storage,
         removal_identifier="test_bundle",
         object_public_key=OBJECT_PUBLIC_KEY,
         decryption_key_shares=encrypted_shares_for_object_private_key,
+        registration_callback=register,
     ) as creator:
         creator.backup_swhids(ExtendedSWHID.from_string(swhid) for swhid in swhids)
 
@@ -627,6 +634,23 @@ def test_create_recovery_bundle(
         assert content.status == "visible"
         # Have we properly saved content data?
         assert content.data == b"42\n"
+        # Have we registered all saved objects?
+        assert swhids_found == [
+            "swh:1:cnt:d81cc0710eb6cf9efd5b920a8453e1e07157b6cd",
+            "swh:1:cnt:c932c7649c6dfa4b82327d121215116909eb3bea",
+            "swh:1:cnt:33e45d56f88993aae6a0198013efa80716fd8920",
+            "swh:1:dir:5256e856a0a0898966d6ba14feb4388b8b82d302",
+            "swh:1:dir:4b825dc642cb6eb9a060e54bf8d69288fbee4904",
+            "swh:1:dir:afa0105cfcaa14fdbacee344e96659170bb1bda5",
+            "swh:1:rev:01a7114f36fddd5ef2511b2cadda237a68adbb12",
+            "swh:1:rev:a646dd94c912829659b22a1e7e143d2fa5ebde1b",
+            "swh:1:rel:f7f222093a18ec60d781070abec4a630c850b837",
+            "swh:1:rel:db81a26783a3f4a9db07b4759ffc37621f159bb2",
+            "swh:1:snp:9b922e6d8d5b803c1582aabe5525b7b91150788e",
+            "swh:1:snp:db99fda25b43dc5cd90625ee4b0744751799c917",
+            "swh:1:ori:33abd4b4c5db79c7387673f71302750fd73e0645",
+            "swh:1:ori:9147ab9c9287940d4fdbe95d8780664d7ad2dfc0",
+        ]
 
 
 def test_create_recovery_bundle_fails_if_empty(

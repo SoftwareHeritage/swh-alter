@@ -8,12 +8,13 @@ import logging
 from typing import Dict, List, Optional, Protocol, TextIO
 
 from swh.graph.http_client import RemoteGraphClient
-from swh.model.swhids import ExtendedObjectType, ExtendedSWHID
+from swh.model.swhids import CoreSWHID, ExtendedObjectType, ExtendedSWHID
 from swh.storage.interface import ObjectDeletionInterface, StorageInterface
 
 from .inventory import make_inventory
 from .recovery_bundle import (
     AgeSecretKey,
+    HasSwhid,
     RecoveryBundle,
     RecoveryBundleCreator,
     SecretSharing,
@@ -52,6 +53,7 @@ class Remover:
         self.extra_storages = extra_storages if extra_storages else {}
         self.recovery_bundle_path: Optional[str] = None
         self.object_secret_key: Optional[AgeSecretKey] = None
+        self.swhids_to_remove: List[ExtendedSWHID] = []
 
     def get_removable(
         self,
@@ -82,6 +84,17 @@ class Remover:
             output_pruned_removable_subgraph.close()
         return list(removable_subgraph.removable_swhids())
 
+    def register_object(self, obj: HasSwhid) -> None:
+        # Our interface for removal uses SWHIDs for reference.
+        # We hope removal methods will handle objects without SWHIDs
+        # (origin_visit, origin_visit_status) directly.
+        swhid = obj.swhid()
+        if swhid is not None:
+            if isinstance(swhid, CoreSWHID):
+                self.swhids_to_remove.append(swhid.to_extended())
+            else:
+                self.swhids_to_remove.append(swhid)
+
     def create_recovery_bundle(
         self,
         /,
@@ -104,6 +117,7 @@ class Remover:
             removal_identifier=removal_identifier,
             object_public_key=object_public_key,
             decryption_key_shares=decryption_key_shares,
+            registration_callback=self.register_object,
         ) as creator:
             if reason is not None:
                 creator.set_reason(reason)
@@ -128,20 +142,22 @@ class Remover:
         result = bundle.restore(self.storage)
         _secho(f"{sum(result.values())} objects restored.", fg="green")
 
-    def remove(self, swhids: List[ExtendedSWHID]) -> None:
+    def remove(self) -> None:
         _secho("Removing objects from primary storage…", fg="cyan")
-        result = self.storage.object_delete(swhids)
+        result = self.storage.object_delete(self.swhids_to_remove)
         _secho(
             f"{sum(result.values())} objects removed from primary storage.", fg="green"
         )
+
         for name, extra_storage in self.extra_storages.items():
             _secho(f"Removing objects from storage “{name}”…", fg="cyan")
-            result = extra_storage.object_delete(swhids)
+            result = extra_storage.object_delete(self.swhids_to_remove)
             _secho(
                 f"{sum(result.values())} objects removed from storage “{name}”.",
                 fg="green",
             )
-        if self.have_new_references(swhids):
+
+        if self.have_new_references(self.swhids_to_remove):
             raise RemoverError("New references have been added to removed objects")
 
     def have_new_references(self, removed_swhids: List[ExtendedSWHID]) -> bool:

@@ -221,16 +221,17 @@ def remover_for_bundle_creation(mocker):
         return_value=mocker.MagicMock(),
     )
     remover = Remover({}, {})
+    swhids = [
+        ExtendedSWHID.from_string("swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165")
+    ]
+    mocker.patch.object(remover, "get_removable", return_value=swhids)
+
+    def mock_create_recovery_bundle(*args, **kwargs):
+        remover.swhids_to_remove = swhids
+
     mocker.patch.object(
-        remover,
-        "get_removable",
-        return_value=[
-            ExtendedSWHID.from_string(
-                "swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165"
-            )
-        ],
+        remover, "create_recovery_bundle", side_effect=mock_create_recovery_bundle
     )
-    mocker.patch.object(remover, "create_recovery_bundle")
     mocker.patch("swh.alter.operations.Remover", return_value=remover)
     return remover
 
@@ -253,7 +254,6 @@ def test_cli_remove_create_bundle_no_extra_options(
     )
     remover_for_bundle_creation.create_recovery_bundle.assert_called_once()
     _, kwargs = remover_for_bundle_creation.create_recovery_bundle.call_args
-    assert kwargs["removable_swhids"] == remover_for_bundle_creation.get_removable()
     assert kwargs["removal_identifier"] == "this-is-not-my-departement"
     assert kwargs["recovery_bundle_path"] == "test.swh-recovery-bundle"
 
@@ -281,7 +281,6 @@ def test_cli_remove_create_bundle_with_options(
     )
     remover_for_bundle_creation.create_recovery_bundle.assert_called_once()
     _, kwargs = remover_for_bundle_creation.create_recovery_bundle.call_args
-    assert kwargs["removable_swhids"] == remover_for_bundle_creation.get_removable()
     assert kwargs["removal_identifier"] == "test"
     assert kwargs["recovery_bundle_path"] == "test.swh-recovery-bundle"
     assert kwargs["reason"] == "we are doing a test"

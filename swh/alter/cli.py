@@ -276,7 +276,7 @@ def remove(
         click.secho(e.args[0], err=True, fg="red")
         ctx.exit(1)
     try:
-        remover.remove(removable_swhids)
+        remover.remove()
     except Exception as e:
         click.secho(str(e), err=True, fg="red", bold=True)
         remover.restore_recovery_bundle()
