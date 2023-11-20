@@ -201,6 +201,7 @@ def test_remover_remove_from_extra_storage(
 ):
     primary_storage = mocker.MagicMock()
     graph_client = mocker.MagicMock()
+    journal_writer = mocker.MagicMock()
     extra_storage_one = mocker.MagicMock()
     extra_storage_one.object_delete.return_value = {"origin:delete": 0}
     extra_storage_two = mocker.MagicMock()
@@ -208,6 +209,7 @@ def test_remover_remove_from_extra_storage(
     remover = Remover(
         primary_storage,
         graph_client,
+        journal_writer,
         extra_storages={"one": extra_storage_one, "two": extra_storage_two},
     )
     remover.swhids_to_remove = [

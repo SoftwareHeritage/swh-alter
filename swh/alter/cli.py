@@ -205,6 +205,8 @@ def remove(
 ) -> None:
     """Remove the given SWHIDs or URLs from the archive."""
     from swh.graph.http_client import GraphAPIError, RemoteGraphClient
+    from swh.journal.writer import get_journal_writer
+    from swh.journal.writer.kafka import KafkaJournalWriter
     from swh.storage import get_storage
     from swh.storage.interface import ObjectDeletionInterface
 
@@ -226,6 +228,14 @@ def remove(
         storage, "object_delete"
     ), "primary storage does not implement ObjectDeletionInterface"
 
+    if "journal_writer" in conf:
+        journal_writer = get_journal_writer(**conf["journal_writer"])
+        assert isinstance(
+            journal_writer, KafkaJournalWriter
+        ), "journal writer is not kafka-based"
+    else:
+        journal_writer = None
+
     if "extra_storages" in conf:
         extra_storages = {
             name: get_storage(**d) for name, d in conf["extra_storages"].items()
@@ -240,6 +250,7 @@ def remove(
     remover = Remover(
         cast(StorageWithDelete, storage),
         graph_client,
+        cast(Optional[KafkaJournalWriter], journal_writer),
         cast(Dict[str, ObjectDeletionInterface], extra_storages),
     )
     try:

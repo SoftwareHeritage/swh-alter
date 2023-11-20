@@ -575,10 +575,13 @@ def test_create_recovery_bundle(
         "swh:1:ori:9147ab9c9287940d4fdbe95d8780664d7ad2dfc0",
     ]
 
-    swhids_found = []
+    unique_keys_found = []
 
     def register(obj):
-        swhids_found.append(str(obj.swhid()))
+        if hasattr(obj, "swhid"):
+            unique_keys_found.append(obj.swhid().object_id)
+        else:
+            unique_keys_found.append(obj.unique_key())
 
     with RecoveryBundleCreator(
         path=bundle_path,
@@ -635,21 +638,48 @@ def test_create_recovery_bundle(
         # Have we properly saved content data?
         assert content.data == b"42\n"
         # Have we registered all saved objects?
-        assert swhids_found == [
-            "swh:1:cnt:d81cc0710eb6cf9efd5b920a8453e1e07157b6cd",
-            "swh:1:cnt:c932c7649c6dfa4b82327d121215116909eb3bea",
-            "swh:1:cnt:33e45d56f88993aae6a0198013efa80716fd8920",
-            "swh:1:dir:5256e856a0a0898966d6ba14feb4388b8b82d302",
-            "swh:1:dir:4b825dc642cb6eb9a060e54bf8d69288fbee4904",
-            "swh:1:dir:afa0105cfcaa14fdbacee344e96659170bb1bda5",
-            "swh:1:rev:01a7114f36fddd5ef2511b2cadda237a68adbb12",
-            "swh:1:rev:a646dd94c912829659b22a1e7e143d2fa5ebde1b",
-            "swh:1:rel:f7f222093a18ec60d781070abec4a630c850b837",
-            "swh:1:rel:db81a26783a3f4a9db07b4759ffc37621f159bb2",
-            "swh:1:snp:9b922e6d8d5b803c1582aabe5525b7b91150788e",
-            "swh:1:snp:db99fda25b43dc5cd90625ee4b0744751799c917",
-            "swh:1:ori:33abd4b4c5db79c7387673f71302750fd73e0645",
-            "swh:1:ori:9147ab9c9287940d4fdbe95d8780664d7ad2dfc0",
+        assert unique_keys_found == [
+            bytes.fromhex("d81cc0710eb6cf9efd5b920a8453e1e07157b6cd"),
+            bytes.fromhex("c932c7649c6dfa4b82327d121215116909eb3bea"),
+            bytes.fromhex("33e45d56f88993aae6a0198013efa80716fd8920"),
+            bytes.fromhex("5256e856a0a0898966d6ba14feb4388b8b82d302"),
+            bytes.fromhex("4b825dc642cb6eb9a060e54bf8d69288fbee4904"),
+            bytes.fromhex("afa0105cfcaa14fdbacee344e96659170bb1bda5"),
+            bytes.fromhex("01a7114f36fddd5ef2511b2cadda237a68adbb12"),
+            bytes.fromhex("a646dd94c912829659b22a1e7e143d2fa5ebde1b"),
+            bytes.fromhex("f7f222093a18ec60d781070abec4a630c850b837"),
+            bytes.fromhex("db81a26783a3f4a9db07b4759ffc37621f159bb2"),
+            bytes.fromhex("9b922e6d8d5b803c1582aabe5525b7b91150788e"),
+            bytes.fromhex("db99fda25b43dc5cd90625ee4b0744751799c917"),
+            bytes.fromhex("33abd4b4c5db79c7387673f71302750fd73e0645"),
+            {
+                "date": "2015-01-01 23:00:00+00:00",
+                "origin": "https://github.com/user1/repo1",
+            },
+            {
+                "date": "2015-01-01 23:00:00+00:00",
+                "origin": "https://github.com/user1/repo1",
+                "visit": "1",
+            },
+            {
+                "date": "2017-01-01 23:00:00+00:00",
+                "origin": "https://github.com/user1/repo1",
+            },
+            {
+                "date": "2017-01-01 23:00:00+00:00",
+                "origin": "https://github.com/user1/repo1",
+                "visit": "2",
+            },
+            bytes.fromhex("9147ab9c9287940d4fdbe95d8780664d7ad2dfc0"),
+            {
+                "date": "2015-01-01 23:00:00+00:00",
+                "origin": "https://github.com/user2/repo1",
+            },
+            {
+                "date": "2015-01-01 23:00:00+00:00",
+                "origin": "https://github.com/user2/repo1",
+                "visit": "1",
+            },
         ]
 
 

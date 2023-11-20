@@ -228,6 +228,9 @@ def remover_for_bundle_creation(mocker):
 
     def mock_create_recovery_bundle(*args, **kwargs):
         remover.swhids_to_remove = swhids
+        remover.journal_objects_to_remove["origin"] = [
+            bytes.fromhex("8f50d3f60eae370ddbf85c86219c55108a350165")
+        ]
 
     mocker.patch.object(
         remover, "create_recovery_bundle", side_effect=mock_create_recovery_bundle

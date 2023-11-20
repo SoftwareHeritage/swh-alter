@@ -3,11 +3,14 @@
 # License: GNU General Public License version 3, or any later version
 # See top-level LICENSE file for more information
 
+import collections
 from datetime import datetime
 import logging
-from typing import Dict, List, Optional, Protocol, TextIO
+from typing import Dict, List, Optional, Protocol, TextIO, Union
 
 from swh.graph.http_client import RemoteGraphClient
+from swh.journal.writer.kafka import KafkaJournalWriter
+from swh.model.model import KeyType
 from swh.model.swhids import CoreSWHID, ExtendedObjectType, ExtendedSWHID
 from swh.storage.interface import ObjectDeletionInterface, StorageInterface
 
@@ -15,6 +18,7 @@ from .inventory import make_inventory
 from .recovery_bundle import (
     AgeSecretKey,
     HasSwhid,
+    HasUniqueKey,
     RecoveryBundle,
     RecoveryBundleCreator,
     SecretSharing,
@@ -46,14 +50,19 @@ class Remover:
         /,
         storage: StorageWithDelete,
         graph_client: RemoteGraphClient,
+        journal_writer: Optional[KafkaJournalWriter] = None,
         extra_storages: Optional[Dict[str, ObjectDeletionInterface]] = None,
     ):
         self.storage = storage
         self.graph_client = graph_client
+        self.journal_writer = journal_writer
         self.extra_storages = extra_storages if extra_storages else {}
         self.recovery_bundle_path: Optional[str] = None
         self.object_secret_key: Optional[AgeSecretKey] = None
         self.swhids_to_remove: List[ExtendedSWHID] = []
+        self.journal_objects_to_remove: Dict[
+            str, List[KeyType]
+        ] = collections.defaultdict(list)
 
     def get_removable(
         self,
@@ -84,16 +93,20 @@ class Remover:
             output_pruned_removable_subgraph.close()
         return list(removable_subgraph.removable_swhids())
 
-    def register_object(self, obj: HasSwhid) -> None:
-        # Our interface for removal uses SWHIDs for reference.
-        # We hope removal methods will handle objects without SWHIDs
-        # (origin_visit, origin_visit_status) directly.
-        swhid = obj.swhid()
-        if swhid is not None:
-            if isinstance(swhid, CoreSWHID):
-                self.swhids_to_remove.append(swhid.to_extended())
-            else:
-                self.swhids_to_remove.append(swhid)
+    def register_object(self, obj: Union[HasSwhid, HasUniqueKey]) -> None:
+        # Register for removal from storage
+        if hasattr(obj, "swhid"):
+            # StorageInterface.ObjectDeletionInterface.remove uses SWHIDs
+            # for reference. We hope it will handle objects without SWHIDs
+            # (origin_visit, origin_visit_status) directly.
+            swhid = obj.swhid()
+            if swhid is not None:
+                if isinstance(swhid, CoreSWHID):
+                    self.swhids_to_remove.append(swhid.to_extended())
+                else:
+                    self.swhids_to_remove.append(swhid)
+        # Register for removal from the journal
+        self.journal_objects_to_remove[obj.object_type].append(obj.unique_key())
 
     def create_recovery_bundle(
         self,
@@ -140,7 +153,15 @@ class Remover:
         _secho("Restoring recovery bundle…", fg="cyan")
         bundle = RecoveryBundle(self.recovery_bundle_path, key_provider)
         result = bundle.restore(self.storage)
-        _secho(f"{sum(result.values())} objects restored.", fg="green")
+        total = sum(result.values())
+        _secho(f"{total} objects restored.", fg="green")
+        if len(self.journal_objects_to_remove) != total:
+            _secho(
+                f"{len(self.journal_objects_to_remove)} objects should have "
+                "been restored. Something might be wrong!",
+                fg="red",
+                bold=True,
+            )
 
     def remove(self) -> None:
         _secho("Removing objects from primary storage…", fg="cyan")
@@ -156,6 +177,13 @@ class Remover:
                 f"{sum(result.values())} objects removed from storage “{name}”.",
                 fg="green",
             )
+
+        if self.journal_writer:
+            _secho("Removing objects from the journal…", fg="cyan")
+            for object_type, keys in self.journal_objects_to_remove.items():
+                self.journal_writer.delete(object_type, keys)
+            self.journal_writer.flush()
+            _secho("Objects removed from the journal.", fg="green")
 
         if self.have_new_references(self.swhids_to_remove):
             raise RemoverError("New references have been added to removed objects")

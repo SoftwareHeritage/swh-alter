@@ -44,6 +44,13 @@ The tools will not work without a configuration file. It can be created as
       objstorage:
         cls: remote
         url: https://objstorage.softwareheritage.org
+      journal_writer:
+        cls: kafka
+        brokers:
+        - kafka1.internal.softwareheritage.org
+        prefix: swh.journal.objects
+        client_id: swh.alter.additions
+        anonymize: true
 
     graph:
       url: "http://granet.internal.softwareheritage.org:5009/graph"
@@ -54,6 +61,13 @@ The tools will not work without a configuration file. It can be created as
         hosts:
         - cassandra-seed
         keyspace: swh
+
+    journal_writer:
+      cls: kafka
+      brokers:
+      - kafka1.internal.softwareheritage.org
+      prefix: swh.journal.objects
+      client_id: swh.alter.removals
 
     recovery_bundles:
       secret_sharing:

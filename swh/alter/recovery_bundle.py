@@ -44,6 +44,7 @@ from swh.model.model import (
     BaseModel,
     Content,
     Directory,
+    KeyType,
     Origin,
     OriginVisit,
     OriginVisitStatus,
@@ -679,11 +680,17 @@ def _from_hashes(
     return d
 
 
-class HasSwhid(Protocol):
+class HasUniqueKey(Protocol):
     @property
     def object_type(self) -> str:
         ...
 
+    @abstractmethod
+    def unique_key(self) -> KeyType:
+        ...
+
+
+class HasSwhid(HasUniqueKey):
     @abstractmethod
     def swhid(self) -> Union[CoreSWHID, Optional[CoreSWHID], ExtendedSWHID]:
         ...
@@ -697,7 +704,9 @@ class RecoveryBundleCreator:
         removal_identifier: str,
         object_public_key: AgePublicKey,
         decryption_key_shares: Dict[str, str],
-        registration_callback: Optional[Callable[[HasSwhid], None]] = None,
+        registration_callback: Optional[
+            Callable[[Union[HasSwhid, HasUniqueKey]], None]
+        ] = None,
     ):
         self._path = path
         self._storage = storage
@@ -890,8 +899,10 @@ class RecoveryBundleCreator:
                 self._storage.origin_visit_get_with_statuses, origin.url
             ):
                 self._add_origin_visit(basename, origin_visit_with_statuses.visit)
+                self._registration_callback(origin_visit_with_statuses.visit)
                 for origin_visit_status in origin_visit_with_statuses.statuses:
                     self._add_origin_visit_status(basename, origin_visit_status)
+                    self._registration_callback(origin_visit_status)
 
     def backup_swhids(self, swhids: Iterable[ExtendedSWHID]):
         # groupby() splits consecutive groups, so we need to order the list first
