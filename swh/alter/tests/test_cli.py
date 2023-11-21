@@ -69,12 +69,7 @@ def remove_config():
     return config
 
 
-def test_cli_remove_dry_run(mocker, mocked_external_resources, remove_config):
-    removable_swhids = [
-        ExtendedSWHID.from_string("swh:1:ori:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
-        ExtendedSWHID.from_string("swh:1:ori:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
-    ]
-    mocker.patch.object(Remover, "get_removable", return_value=removable_swhids)
+def test_cli_remove_dry_run_fails_without_mode(remove_config):
     runner = CliRunner()
     result = runner.invoke(
         remove,
@@ -88,8 +83,70 @@ def test_cli_remove_dry_run(mocker, mocked_external_resources, remove_config):
         ],
         obj={"config": remove_config},
     )
+    assert "Invalid value for '--dry-run'" in result.output
+    assert result.exit_code == 2
+
+
+def test_cli_remove_dry_run_stop_before_recovery_bundle(
+    mocker, mocked_external_resources, remove_config
+):
+    removable_swhids = [
+        ExtendedSWHID.from_string("swh:1:ori:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+        ExtendedSWHID.from_string("swh:1:ori:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
+    ]
+    mocker.patch.object(Remover, "get_removable", return_value=removable_swhids)
+    create_recovery_bundle_method = mocker.patch.object(
+        Remover, "create_recovery_bundle"
+    )
+    remove_method = mocker.patch.object(Remover, "remove")
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        result = runner.invoke(
+            remove,
+            [
+                "--identifier",
+                "test",
+                "--recovery-bundle",
+                "/nonexistent",
+                "--dry-run=stop-before-recovery-bundle",
+                "swh:1:ori:cafecafecafecafecafecafecafecafecafecafe",
+            ],
+            obj={"config": remove_config},
+        )
     assert result.exit_code == 0
     assert "We would remove 2 objects" in result.output
+    create_recovery_bundle_method.assert_not_called()
+    remove_method.assert_not_called()
+
+
+def test_cli_remove_dry_run_stop_before_removal(
+    mocker, mocked_external_resources, remove_config
+):
+    removable_swhids = [
+        ExtendedSWHID.from_string("swh:1:ori:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+        ExtendedSWHID.from_string("swh:1:ori:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
+    ]
+    mocker.patch.object(Remover, "get_removable", return_value=removable_swhids)
+    create_recovery_bundle_method = mocker.patch.object(
+        Remover, "create_recovery_bundle"
+    )
+    remove_method = mocker.patch.object(Remover, "remove")
+    runner = CliRunner()
+    result = runner.invoke(
+        remove,
+        [
+            "--identifier",
+            "test",
+            "--recovery-bundle",
+            "/nonexistent",
+            "--dry-run=stop-before-removal",
+            "swh:1:ori:cafecafecafecafecafecafecafecafecafecafe",
+        ],
+        obj={"config": remove_config},
+    )
+    assert result.exit_code == 0
+    create_recovery_bundle_method.assert_called_once()
+    remove_method.assert_not_called()
 
 
 def test_cli_remove_colored_output(mocker, mocked_external_resources, remove_config):
@@ -103,7 +160,7 @@ def test_cli_remove_colored_output(mocker, mocked_external_resources, remove_con
             "test",
             "--recovery-bundle",
             "/nonexistent",
-            "--dry-run",
+            "--dry-run=stop-before-recovery-bundle",
             "swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165",
         ],
         obj={"config": remove_config},
@@ -143,12 +200,12 @@ def test_cli_remove_errors_when_graph_is_down(
             "test",
             "--recovery-bundle",
             "/nonexistent",
-            "--dry-run",
+            "--dry-run=stop-before-recovery-bundle",
             "swh:1:ori:cafecafecafecafecafecafecafecafecafecafe",
         ],
         obj={"config": remove_config},
     )
-    assert result.exit_code == 1
+    assert result.exit_code == 1, result.output
     assert "Unable to connect to the graph server" in result.output
 
 
@@ -164,7 +221,7 @@ def test_cli_remove_origin_conversions(
             "test",
             "--recovery-bundle",
             "/nonexistent",
-            "--dry-run",
+            "--dry-run=stop-before-recovery-bundle",
             "https://example.com/swh/graph",
             "swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165",
         ],
@@ -188,7 +245,7 @@ def test_cli_remove_output_subgraphs(mocker, mocked_external_resources, remove_c
             "test",
             "--recovery-bundle",
             "/nonexistent",
-            "--dry-run",
+            "--dry-run=stop-before-recovery-bundle",
             "--output-inventory-subgraph=inventory.dot",
             "--output-removable-subgraph=removable.dot",
             "--output-pruned-removable-subgraph=pruned.dot",

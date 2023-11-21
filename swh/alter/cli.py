@@ -145,7 +145,11 @@ def alter_cli_group(ctx):
 
 @alter_cli_group.command()
 @click.option(
-    "--dry-run", is_flag=True, help="perform a trial run with no changes made"
+    "--dry-run",
+    type=click.Choice(
+        ["stop-before-recovery-bundle", "stop-before-removal"], case_sensitive=False
+    ),
+    help="perform a trial run",
 )
 @click.option(
     "--output-inventory-subgraph",
@@ -268,20 +272,21 @@ def remove(
             output_removable_subgraph=output_removable_subgraph,
             output_pruned_removable_subgraph=output_pruned_removable_subgraph,
         )
-        if dry_run:
+        if dry_run == "stop-before-recovery-bundle":
             click.echo(f"We would remove {len(removable_swhids)} objects:")
             for swhid in removable_swhids:
                 click.echo(f" - {swhid}")
             ctx.exit(0)
 
-        click.confirm(
-            click.style(
-                f"Proceed with removing {len(removable_swhids)} SWHIDs?",
-                fg="yellow",
-                bold=True,
-            ),
-            abort=True,
-        )
+        if dry_run is None:
+            click.confirm(
+                click.style(
+                    f"Proceed with removing {len(removable_swhids)} SWHIDs?",
+                    fg="yellow",
+                    bold=True,
+                ),
+                abort=True,
+            )
 
         remover.create_recovery_bundle(
             secret_sharing=secret_sharing,
@@ -294,6 +299,11 @@ def remove(
     except RemoverError as e:
         click.secho(e.args[0], err=True, fg="red")
         ctx.exit(1)
+
+    if dry_run == "stop-before-removal":
+        click.echo("Stopping before removal.")
+        ctx.exit(0)
+
     try:
         remover.remove()
     except Exception as e:
