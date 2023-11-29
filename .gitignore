@@ -4,11 +4,12 @@
 *~
 .coverage
 .eggs/
+.hypothesis
 .mypy_cache
+.vscode/
 .tox
 __pycache__
 build/
 dist/
-version.txt
-.mypy_cache/
-.vscode/
+docs/README.rst
+docs/README.md
