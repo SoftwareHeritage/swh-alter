@@ -178,6 +178,12 @@ key. If the secret key is stored on a `YubiKey
    single removal procedure, there will never be the need to add new objects to
    an existing bundle. Therefore, there is no need to keep the public key.
 
+.. figure:: images/recovery-bundle.opt.svg
+   :alt: A schema showing the encryption layers used in recovery bundles
+
+   An example recovery bundle for the secret sharing policy described in the
+   example configuration
+
 The decryption process then follows the following steps:
 
 1. The required amount of shares are decrypted using the relevant YubiKey.
