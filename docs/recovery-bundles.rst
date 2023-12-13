@@ -317,32 +317,32 @@ restored (or have its content extracted). We believe the proposed scheme fulfill
 this goal, but as all security-related tools, we can analyze some limits.
 
 1. With Shamir Secret Sharing, the share-holders cannot verify that their shares
-are valid. Meaning:
+   are valid. Meaning:
 
- - The dealer could cheat
+   - The dealer could cheat.
 
-   In our case, the dealer is the recovery bundle creation system. An attacker
-   would need to change the production code, or the recovery bundle itself after
-   it has been generated but before it has been sent to a common storage. In
-   both cases, that means they have access to the system used to delete objects
-   in the database. Therefore we can assume they have elevated access to the
-   database, and could delete or look-up the data directly instead of using
-   a more complex method of corrupting a recovery bundle in one way or another.
+     In our case, the dealer is the recovery bundle creation system. An attacker
+     would need to change the production code, or the recovery bundle itself after
+     it has been generated but before it has been sent to a common storage. In
+     both cases, that means they have access to the system used to delete objects
+     in the database. Therefore we can assume they have elevated access to the
+     database, and could delete or look-up the data directly instead of using
+     a more complex method of corrupting a recovery bundle in one way or another.
 
- - The secret holders could cheat.
+   - The secret holders could cheat.
 
-   With the local mode of operation, holders don’t exchange secrets. They
-   only provide temporary access to their secret key (ideally by plugging a
-   YubiKey). Cheating would mean changing the production code which would most
-   likely be detected while trying to recover from the error of finding a
-   corrupted share.
+     With the local mode of operation, holders don’t exchange secrets. They
+     only provide temporary access to their secret key (ideally by plugging a
+     YubiKey). Cheating would mean changing the production code which would most
+     likely be detected while trying to recover from the error of finding a
+     corrupted share.
 
-   When working remotely, holders could willingly share a corrupted secret. This
-   would result in a denial-of-service (due to SLIP-0039 properties). However,
-   while this would prevent one bundle to be restored, this would result in
-   potential consequences at the employment level. Depending on the secret
-   sharing configuration, this might have no impact on the team ability to
-   restore the bundle anyway, as another holder could provide a working secret.
+     When working remotely, holders could willingly share a corrupted secret. This
+     would result in a denial-of-service (due to SLIP-0039 properties). However,
+     while this would prevent one bundle to be restored, this would result in
+     potential consequences at the employment level. Depending on the secret
+     sharing configuration, this might have no impact on the team ability to
+     restore the bundle anyway, as another holder could provide a working secret.
 
 2. The person reassembling the secrets could keep a copy to re-use them later
 
@@ -374,14 +374,13 @@ are valid. Meaning:
 
    True. Therefore:
 
-    - key pairs used by secret holders should only be used for recovery bundle
-      secrets,
-    - secret holders should always make sure that the removal
-      identifier visible after decrypting the payload matches the bundle
-      that needs to be accessed.
+   - key pairs used by secret holders should only be used for recovery bundle
+     secrets,
+   - secret holders should always make sure that the removal
+     identifier visible after decrypting the payload matches the bundle
+     that needs to be accessed.
 
-   The payloads themselves are protected from tampering by `*age* using AEAD
-   <https://words.filippo.io/dispatches/age-authentication/>`_.
+   The payloads themselves are protected from tampering by |age using AEAD|_.
 
 5. `python-shamir-mnemonic` is vulnerable to side-channel attacks.
 
@@ -392,3 +391,6 @@ are valid. Meaning:
    limits the attack surface of using a non-optimal SLIP-0039 implementation.
    An attacker would first have to steal an holder secret key, get access to
    their target bundle, before they can start working on the maths…
+
+.. |age using AEAD| replace:: `age` using AEAD
+.. _age using AEAD: https://words.filippo.io/dispatches/age-authentication/
