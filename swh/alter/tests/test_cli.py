@@ -3,9 +3,11 @@
 # License: GNU General Public License version 3, or any later version
 # See top-level LICENSE file for more information
 
+from contextlib import closing
 from datetime import datetime, timedelta
 import os
 import shutil
+import socket
 from typing import List
 
 from click.testing import CliRunner
@@ -111,6 +113,43 @@ def test_cli_remove_colored_output(mocker, mocked_external_resources, remove_con
     assert (
         click.style("Inventorying all reachable objects…", fg="cyan") in result.output
     )
+
+
+def find_free_port():
+    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
+        s.bind(("localhost", 0))
+        # We explicitly not set SO_REUSEADDR because we want the port
+        # to stay free so we can get our connection refused.
+        return s.getsockname()[1]
+
+
+def test_cli_remove_errors_when_graph_is_down(
+    mocker,
+    storage_with_references_from_forked_origin,  # noqa: F811
+    remove_config,
+):
+    mocker.patch(
+        "swh.storage.get_storage",
+        return_value=storage_with_references_from_forked_origin,
+    )
+    erroneous_graph_port = find_free_port()
+    remove_config["graph"]["url"] = f"http://localhost:{erroneous_graph_port}/graph"
+
+    runner = CliRunner()
+    result = runner.invoke(
+        remove,
+        [
+            "--identifier",
+            "test",
+            "--recovery-bundle",
+            "/nonexistent",
+            "--dry-run",
+            "swh:1:ori:cafecafecafecafecafecafecafecafecafecafe",
+        ],
+        obj={"config": remove_config},
+    )
+    assert result.exit_code == 1
+    assert "Unable to connect to the graph server" in result.output
 
 
 def test_cli_remove_origin_conversions(

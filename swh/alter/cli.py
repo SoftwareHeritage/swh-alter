@@ -204,7 +204,7 @@ def remove(
     recovery_bundle,
 ) -> None:
     """Remove the given SWHIDs or URLs from the archive."""
-    from swh.graph.http_client import RemoteGraphClient
+    from swh.graph.http_client import GraphAPIError, RemoteGraphClient
     from swh.storage import get_storage
     from swh.storage.interface import ObjectDeletionInterface
 
@@ -215,7 +215,11 @@ def remove(
     logger.setLevel(logging.INFO)
 
     conf = ctx.obj["config"]
-    graph_client = RemoteGraphClient(**conf["graph"])
+
+    try:
+        graph_client = RemoteGraphClient(**conf["graph"])
+    except GraphAPIError as e:
+        raise click.ClickException(f"Unable to connect to the graph server: {e.args}")
 
     storage = get_storage(**conf["storage"])
     assert hasattr(
