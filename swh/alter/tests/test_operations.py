@@ -13,6 +13,7 @@ import yaml
 from swh.model.swhids import ExtendedObjectType, ExtendedSWHID
 
 from ..operations import Remover, RemoverError
+from ..recovery_bundle import SecretSharing
 from .test_inventory import (  # noqa
     directory_6_with_multiple_entries_pointing_to_the_same_content,
     snapshot_20_with_multiple_branches_pointing_to_the_same_head,
@@ -130,7 +131,7 @@ def test_remover_create_recovery_bundle(
         for share_id in group["recipient_keys"].keys()
     }
     remover.create_recovery_bundle(
-        secret_sharing_conf=secret_sharing_conf,
+        secret_sharing=SecretSharing.from_dict(secret_sharing_conf),
         removable_swhids=[ExtendedSWHID.from_string(swhid) for swhid in swhids],
         recovery_bundle_path=bundle_path,
         removal_identifier="test",
@@ -162,7 +163,7 @@ def test_remover_create_recovery_bundle_fails_with_expire_in_the_past(
     expire = datetime.fromisoformat("2001-01-01").astimezone()
     with pytest.raises(RemoverError, match="Unable to set expiration date"):
         remover.create_recovery_bundle(
-            secret_sharing_conf=secret_sharing_conf,
+            secret_sharing=SecretSharing.from_dict(secret_sharing_conf),
             removable_swhids=[ExtendedSWHID.from_string(swhid) for swhid in swhids],
             recovery_bundle_path=bundle_path,
             removal_identifier="test",
@@ -340,7 +341,7 @@ def test_remover_restore_recovery_bundle(
         ExtendedSWHID.from_string("swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165")
     ]
     remover.create_recovery_bundle(
-        secret_sharing_conf,
+        secret_sharing=SecretSharing.from_dict(secret_sharing_conf),
         removable_swhids=swhids,
         recovery_bundle_path=bundle_path,
         removal_identifier="test",

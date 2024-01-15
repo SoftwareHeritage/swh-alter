@@ -111,7 +111,7 @@ class Remover:
     def create_recovery_bundle(
         self,
         /,
-        secret_sharing_conf: Dict[str, str],
+        secret_sharing: SecretSharing,
         removable_swhids: List[ExtendedSWHID],
         recovery_bundle_path: str,
         removal_identifier: str,
@@ -119,7 +119,6 @@ class Remover:
         expire: Optional[datetime] = None,
     ) -> None:
         object_public_key, self.object_secret_key = generate_age_keypair()
-        secret_sharing = SecretSharing.from_dict(secret_sharing_conf)
         decryption_key_shares = secret_sharing.generate_encrypted_shares(
             removal_identifier, self.object_secret_key
         )

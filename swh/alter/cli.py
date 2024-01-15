@@ -211,6 +211,7 @@ def remove(
     from swh.storage.interface import ObjectDeletionInterface
 
     from .operations import Remover, RemoverError, StorageWithDelete, logger
+    from .recovery_bundle import SecretSharing
 
     logger.propagate = False
     logger.addHandler(ClickLoggingHandler())
@@ -247,6 +248,13 @@ def remove(
     else:
         extra_storages = {}
 
+    try:
+        secret_sharing = SecretSharing.from_dict(
+            conf["recovery_bundles"]["secret_sharing"]
+        )
+    except ValueError as e:
+        raise click.ClickException(f"Wrong secret sharing configuration: {e.args[0]}")
+
     remover = Remover(
         cast(StorageWithDelete, storage),
         graph_client,
@@ -276,7 +284,7 @@ def remove(
         )
 
         remover.create_recovery_bundle(
-            secret_sharing_conf=conf["recovery_bundles"]["secret_sharing"],
+            secret_sharing=secret_sharing,
             removable_swhids=removable_swhids,
             recovery_bundle_path=recovery_bundle,
             removal_identifier=identifier,
