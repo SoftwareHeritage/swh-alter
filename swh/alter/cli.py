@@ -268,7 +268,7 @@ def remove(
 
         click.confirm(
             click.style(
-                f"Proceed with removing {len(removable_swhids)} objects?",
+                f"Proceed with removing {len(removable_swhids)} SWHIDs?",
                 fg="yellow",
                 bold=True,
             ),
