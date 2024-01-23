@@ -6,12 +6,18 @@
 import collections
 from datetime import datetime
 import logging
-from typing import Dict, List, Optional, TextIO, Union
+from typing import Dict, List, Optional, TextIO, Union, cast
 
 from swh.graph.http_client import RemoteGraphClient
 from swh.journal.writer.kafka import KafkaJournalWriter
-from swh.model.model import KeyType
+from swh.model.model import Content, KeyType
 from swh.model.swhids import CoreSWHID, ExtendedObjectType, ExtendedSWHID
+from swh.objstorage.exc import ObjNotFoundError
+from swh.objstorage.interface import (
+    CompositeObjId,
+    ObjStorageInterface,
+    objid_from_dict,
+)
 from swh.storage.interface import ObjectDeletionInterface, StorageInterface
 
 from .inventory import make_inventory
@@ -48,16 +54,19 @@ class Remover:
         graph_client: RemoteGraphClient,
         restoration_storage: Optional[StorageInterface] = None,
         removal_storages: Optional[Dict[str, ObjectDeletionInterface]] = None,
+        removal_objstorages: Optional[Dict[str, ObjStorageInterface]] = None,
         removal_journals: Optional[Dict[str, KafkaJournalWriter]] = None,
     ):
         self.storage = storage
         self.graph_client = graph_client
         self.restoration_storage = restoration_storage
         self.removal_storages = removal_storages if removal_storages else {}
+        self.removal_objstorages = removal_objstorages if removal_objstorages else {}
         self.removal_journals = removal_journals if removal_journals else {}
         self.recovery_bundle_path: Optional[str] = None
         self.object_secret_key: Optional[AgeSecretKey] = None
         self.swhids_to_remove: List[ExtendedSWHID] = []
+        self.objids_to_remove: List[CompositeObjId] = []
         self.journal_objects_to_remove: Dict[
             str, List[KeyType]
         ] = collections.defaultdict(list)
@@ -97,12 +106,17 @@ class Remover:
             # StorageInterface.ObjectDeletionInterface.remove uses SWHIDs
             # for reference. We hope it will handle objects without SWHIDs
             # (origin_visit, origin_visit_status) directly.
-            swhid = obj.swhid()
-            if swhid is not None:
-                if isinstance(swhid, CoreSWHID):
-                    self.swhids_to_remove.append(swhid.to_extended())
-                else:
-                    self.swhids_to_remove.append(swhid)
+            obj_swhid = obj.swhid()
+            if obj_swhid is not None:
+                swhid = (
+                    obj_swhid.to_extended()
+                    if isinstance(obj_swhid, CoreSWHID)
+                    else obj_swhid
+                )
+                self.swhids_to_remove.append(swhid)
+                if swhid.object_type == ExtendedObjectType.CONTENT:
+                    content = cast(Content, obj)
+                    self.objids_to_remove.append(objid_from_dict(content.to_dict()))
         # Register for removal from the journal
         self.journal_objects_to_remove[obj.object_type].append(obj.unique_key())
 
@@ -170,6 +184,9 @@ class Remover:
                 fg="green",
             )
 
+        for name, removal_objstorage in self.removal_objstorages.items():
+            self.remove_from_objstorage(name, removal_objstorage)
+
         for name, journal_writer in self.removal_journals.items():
             _secho(f"Removing objects from journal “{name}”…", fg="cyan")
             for object_type, keys in self.journal_objects_to_remove.items():
@@ -179,6 +196,21 @@ class Remover:
 
         if self.have_new_references(self.swhids_to_remove):
             raise RemoverError("New references have been added to removed objects")
+
+    def remove_from_objstorage(
+        self, name: str, objstorage: ObjStorageInterface
+    ) -> None:
+        _secho(f"Removing objects from objstorage “{name}”…", fg="cyan")
+        count = 0
+        for objid in self.objids_to_remove:
+            try:
+                objstorage.delete(objid)
+                count += 1
+            except ObjNotFoundError:
+                _secho(
+                    f"{objid} not found in objstorage “{name}” for deletion", fg="red"
+                )
+        _secho(f"{count} objects removed from objstorage “{name}”.", fg="green")
 
     def have_new_references(self, removed_swhids: List[ExtendedSWHID]) -> bool:
         """Find out if any removed objects now have a new references coming from

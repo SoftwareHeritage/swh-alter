@@ -11,6 +11,7 @@ import pytest
 import yaml
 
 from swh.model.swhids import ExtendedObjectType, ExtendedSWHID
+from swh.objstorage.interface import ObjStorageInterface
 from swh.storage.interface import StorageInterface
 
 from ..operations import Remover, RemoverError
@@ -194,6 +195,35 @@ def test_remover_remove(
         storage.object_delete.assert_called_once()
         args, _ = storage.object_delete.call_args
         assert set(args[0]) == set(remover.swhids_to_remove)
+
+
+def test_remover_remove_from_objstorages(
+    mocker,
+    storage_with_references_from_forked_origin,  # noqa: F811
+):
+    from swh.objstorage.interface import objid_from_dict
+
+    storage = storage_with_references_from_forked_origin
+    objstorage1 = mocker.Mock(spec=ObjStorageInterface)
+    objstorage2 = mocker.Mock(spec=ObjStorageInterface)
+    graph_client = mocker.MagicMock()
+    remover = Remover(
+        storage,
+        graph_client,
+        removal_objstorages={"one": objstorage1, "two": objstorage2},
+    )
+    remover.swhids_to_remove = [
+        ExtendedSWHID.from_string("swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165"),
+    ]
+    contents = storage.content_get(
+        [bytes.fromhex("0000000000000000000000000000000000000014")], algo="sha1_git"
+    )
+    remover.objids_to_remove = [
+        objid_from_dict(content.to_dict()) for content in contents
+    ]
+    remover.remove()
+    for objstorage in (objstorage1, objstorage2):
+        objstorage.delete.assert_called_once()
 
 
 def test_remover_have_new_references_outside_removed(

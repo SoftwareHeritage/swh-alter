@@ -83,6 +83,11 @@ def remove_config():
             "cls": "memory",
         },
     }
+    config["removal_objstorages"] = {
+        "memory": {
+            "cls": "memory",
+        },
+    }
     config["removal_journals"] = {
         "example": {
             "cls": "kafka",

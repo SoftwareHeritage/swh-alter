@@ -106,6 +106,11 @@ def alter_cli_group(ctx):
             - cassandra-seed
             keyspace: swh
         \b
+        removal_objstorages:
+          main:
+            cls: remote
+            url: https://objstorage.softwareheritage.org
+        \b
         removal_journals:
           main_journal:
             cls: kafka
@@ -210,6 +215,8 @@ def remove(
     from swh.graph.http_client import GraphAPIError, RemoteGraphClient
     from swh.journal.writer import get_journal_writer
     from swh.journal.writer.kafka import KafkaJournalWriter
+    from swh.objstorage.factory import get_objstorage
+    from swh.objstorage.interface import ObjStorageInterface
     from swh.storage import get_storage
     from swh.storage.interface import ObjectDeletionInterface
 
@@ -238,6 +245,10 @@ def remove(
             raise click.ClickException(
                 "Configuration does not define any `removal_storages`"
             )
+        if "removal_objstorages" not in conf or len(conf["removal_objstorages"]) == 0:
+            raise click.ClickException(
+                "Configuration does not define any `removal_objstorages`"
+            )
         if "removal_journals" not in conf or len(conf["removal_journals"]) == 0:
             raise click.ClickException(
                 "Configuration does not define any `removal_journals`"
@@ -256,6 +267,10 @@ def remove(
             removal_storage, "object_delete"
         ), f"storage “{name}” does not implement ObjectDeletionInterface"
         removal_storages[name] = removal_storage
+
+    removal_objstorages = {}
+    for name, d in conf.get("removal_objstorages", {}).items():
+        removal_objstorages[name] = get_objstorage(**d)
 
     removal_journals = {}
     for name, d in conf.get("removal_journals", {}).items():
@@ -277,6 +292,7 @@ def remove(
         graph_client=graph_client,
         restoration_storage=restoration_storage,
         removal_storages=cast(Dict[str, ObjectDeletionInterface], removal_storages),
+        removal_objstorages=cast(Dict[str, ObjStorageInterface], removal_objstorages),
         removal_journals=cast(Dict[str, KafkaJournalWriter], removal_journals),
     )
     try:

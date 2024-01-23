@@ -59,6 +59,18 @@ The tools will not work without a configuration file. It can be created as
         - cassandra-seed
         keyspace: swh
 
+    removal_objstorages:
+      main:
+        cls: remote
+        url: https://objstorage.softwareheritage.org
+      azure:
+        cls: azure-prefixed
+        accounts:
+          "0":
+            account_name: testswh0
+            api_secret_key: supersecret
+            container_name: contents
+
     removal_journals:
       main_journal:
         cls: kafka
@@ -104,8 +116,9 @@ In most cases, multiple *storages* has to be configured:
 - ``removal_storages`` contains storages (identified by an arbitrary key)
   from which objects will be removed (when using ``swh alter remove``).
 
-Likewise, ``removal_journals`` defines *journals* from which messages
-will be removed by ``swh alter remove``.
+Likewise, ``removal_objstorages`` and ``removal_journals`` defines *objstorages*
+and *journals* from which data and messages will be removed by ``swh alter
+remove``.
 
 The ``graph`` section is used to determine which objects can be safely removed
 from the archive.
