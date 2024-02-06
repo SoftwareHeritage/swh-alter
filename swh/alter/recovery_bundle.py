@@ -181,6 +181,7 @@ def age_decrypt(
     with tempfile.NamedTemporaryFile("w") as identity_file:
         os.chmod(identity_file.name, 0o400)
         identity_file.write(secret_key)
+        identity_file.write("\n")
         identity_file.flush()
         return age_decrypt_from_identity(identity_file.name, ciphertext)
 

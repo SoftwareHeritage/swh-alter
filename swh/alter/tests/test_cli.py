@@ -1042,7 +1042,7 @@ def test_cli_recovery_bundle_recover_decryption_key_from_yubikeys(
 def alabaster_identity_file_path(tmp_path):
     identity_file = tmp_path / "age-identity-alabaster.txt"
     with identity_file.open("w") as f:
-        f.write(SECRET_KEY_ALABASTER)
+        f.write(SECRET_KEY_ALABASTER + "\n")
     return str(identity_file)
 
 
@@ -1050,7 +1050,7 @@ def alabaster_identity_file_path(tmp_path):
 def essun_identity_file_path(tmp_path):
     identity_file = tmp_path / "age-identity-essun.txt"
     with identity_file.open("w") as f:
-        f.write(SECRET_KEY_ESSUN)
+        f.write(SECRET_KEY_ESSUN + "\n")
     return str(identity_file)
 
 
@@ -1058,7 +1058,7 @@ def essun_identity_file_path(tmp_path):
 def innon_identity_file_path(tmp_path):
     identity_file = tmp_path / "age-identity-innon.txt"
     with identity_file.open("w") as f:
-        f.write(SECRET_KEY_INNON)
+        f.write(SECRET_KEY_INNON + "\n")
     return str(identity_file)
 
 
