@@ -6,7 +6,7 @@
 import collections
 from datetime import datetime
 import logging
-from typing import Dict, List, Optional, Protocol, TextIO, Union
+from typing import Dict, List, Optional, TextIO, Union
 
 from swh.graph.http_client import RemoteGraphClient
 from swh.journal.writer.kafka import KafkaJournalWriter
@@ -29,10 +29,6 @@ from .removable import mark_removable
 logger = logging.getLogger(__name__)
 
 
-class StorageWithDelete(StorageInterface, ObjectDeletionInterface, Protocol):
-    pass
-
-
 class RemoverError(Exception):
     pass
 
@@ -48,15 +44,17 @@ class Remover:
     def __init__(
         self,
         /,
-        storage: StorageWithDelete,
+        storage: StorageInterface,
         graph_client: RemoteGraphClient,
-        journal_writer: Optional[KafkaJournalWriter] = None,
-        extra_storages: Optional[Dict[str, ObjectDeletionInterface]] = None,
+        restoration_storage: Optional[StorageInterface] = None,
+        removal_storages: Optional[Dict[str, ObjectDeletionInterface]] = None,
+        removal_journals: Optional[Dict[str, KafkaJournalWriter]] = None,
     ):
         self.storage = storage
         self.graph_client = graph_client
-        self.journal_writer = journal_writer
-        self.extra_storages = extra_storages if extra_storages else {}
+        self.restoration_storage = restoration_storage
+        self.removal_storages = removal_storages if removal_storages else {}
+        self.removal_journals = removal_journals if removal_journals else {}
         self.recovery_bundle_path: Optional[str] = None
         self.object_secret_key: Optional[AgeSecretKey] = None
         self.swhids_to_remove: List[ExtendedSWHID] = []
@@ -143,6 +141,7 @@ class Remover:
         _secho("Recovery bundle created.", fg="green")
 
     def restore_recovery_bundle(self) -> None:
+        assert self.restoration_storage
         assert self.recovery_bundle_path
 
         def key_provider(_):
@@ -151,7 +150,7 @@ class Remover:
 
         _secho("Restoring recovery bundle…", fg="cyan")
         bundle = RecoveryBundle(self.recovery_bundle_path, key_provider)
-        result = bundle.restore(self.storage)
+        result = bundle.restore(self.restoration_storage)
         total = sum(result.values())
         _secho(f"{total} objects restored.", fg="green")
         if len(self.journal_objects_to_remove) != total:
@@ -163,26 +162,20 @@ class Remover:
             )
 
     def remove(self) -> None:
-        _secho("Removing objects from primary storage…", fg="cyan")
-        result = self.storage.object_delete(self.swhids_to_remove)
-        _secho(
-            f"{sum(result.values())} objects removed from primary storage.", fg="green"
-        )
-
-        for name, extra_storage in self.extra_storages.items():
+        for name, removal_storage in self.removal_storages.items():
             _secho(f"Removing objects from storage “{name}”…", fg="cyan")
-            result = extra_storage.object_delete(self.swhids_to_remove)
+            result = removal_storage.object_delete(self.swhids_to_remove)
             _secho(
                 f"{sum(result.values())} objects removed from storage “{name}”.",
                 fg="green",
             )
 
-        if self.journal_writer:
-            _secho("Removing objects from the journal…", fg="cyan")
+        for name, journal_writer in self.removal_journals.items():
+            _secho(f"Removing objects from journal “{name}”…", fg="cyan")
             for object_type, keys in self.journal_objects_to_remove.items():
-                self.journal_writer.delete(object_type, keys)
-            self.journal_writer.flush()
-            _secho("Objects removed from the journal.", fg="green")
+                journal_writer.delete(object_type, keys)
+            journal_writer.flush()
+            _secho(f"Objects removed from journal “{name}”.", fg="green")
 
         if self.have_new_references(self.swhids_to_remove):
             raise RemoverError("New references have been added to removed objects")

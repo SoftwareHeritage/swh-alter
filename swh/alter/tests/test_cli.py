@@ -63,6 +63,36 @@ def mocked_external_resources(
 @pytest.fixture
 def remove_config():
     config = dict(DEFAULT_CONFIG)
+    config["restoration_storage"] = {
+        "cls": "memory",
+        "objstorage": {
+            "cls": "memory",
+        },
+        "journal_writer": {
+            "cls": "kafka",
+            "brokers": [
+                "kafka1.example.org",
+            ],
+            "prefix": "swh.journal.objects",
+            "client_id": "swh.alter.restores",
+            "anonymize": True,
+        },
+    }
+    config["removal_storages"] = {
+        "memory": {
+            "cls": "memory",
+        },
+    }
+    config["removal_journals"] = {
+        "example": {
+            "cls": "kafka",
+            "brokers": [
+                "kafka1.example.org",
+            ],
+            "prefix": "swh.journal.objects",
+            "client_id": "swh.alter.removals",
+        },
+    }
     config["recovery_bundles"] = yaml.safe_load(
         TWO_GROUPS_REQUIRED_WITH_ONE_MINIMUM_SHARE_EACH_SECRET_SHARING_YAML
     )
@@ -420,7 +450,6 @@ def test_cli_remove_restores_bundle_when_remove_fails(
         obj={"config": remove_config},
         catch_exceptions=False,
     )
-    print(result.output)
     assert result.exit_code == 1
     remover.restore_recovery_bundle.assert_called_once()
 
@@ -579,10 +608,19 @@ def test_cli_recovery_bundle_extract_content_non_existent_bundle(tmp_path):
         assert "does not exist" in result.output
 
 
+@pytest.fixture
+def restore_config(swh_storage_backend_config):
+    return {
+        **DEFAULT_CONFIG,
+        "storage": {"cls": "remote", "url": "http://localhost:1"},
+        "restoration_storage": swh_storage_backend_config,
+    }
+
+
 def test_cli_recovery_bundle_restore_adds_all_objects(
     sample_recovery_bundle_path,  # noqa: F811
     swh_storage,
-    swh_storage_backend_config,
+    restore_config,
 ):
     runner = CliRunner()
     result = runner.invoke(
@@ -591,12 +629,7 @@ def test_cli_recovery_bundle_restore_adds_all_objects(
             f"--decryption-key={OBJECT_SECRET_KEY}",
             sample_recovery_bundle_path,
         ],
-        obj={
-            "config": {
-                **DEFAULT_CONFIG,
-                "storage": swh_storage_backend_config,
-            }
-        },
+        obj={"config": restore_config},
         catch_exceptions=False,
         color=True,
     )
@@ -613,7 +646,7 @@ def test_cli_recovery_bundle_restore_adds_all_objects(
 def test_cli_recovery_bundle_restore_from_identity_files(
     decryption_key_recovery_tests_bundle_path,
     swh_storage,
-    swh_storage_backend_config,
+    restore_config,
     env_with_deactivated_age_yubikey_plugin_in_path,
     alabaster_identity_file_path,
     essun_identity_file_path,
@@ -632,12 +665,7 @@ def test_cli_recovery_bundle_restore_from_identity_files(
             decryption_key_recovery_tests_bundle_path,
         ],
         env=env_with_deactivated_age_yubikey_plugin_in_path,
-        obj={
-            "config": {
-                **DEFAULT_CONFIG,
-                "storage": swh_storage_backend_config,
-            }
-        },
+        obj={"config": restore_config},
         catch_exceptions=False,
     )
     assert result.exit_code == 0
@@ -648,7 +676,7 @@ def test_cli_recovery_bundle_restore_from_yubikeys(
     mocker,
     decryption_key_recovery_tests_bundle_path,
     swh_storage,
-    swh_storage_backend_config,
+    restore_config,
     env_with_deactivated_age_yubikey_plugin_in_path,
     alabaster_identity_file_path,
     essun_identity_file_path,
@@ -667,12 +695,7 @@ def test_cli_recovery_bundle_restore_from_yubikeys(
             decryption_key_recovery_tests_bundle_path,
         ],
         env=env_with_deactivated_age_yubikey_plugin_in_path,
-        obj={
-            "config": {
-                **DEFAULT_CONFIG,
-                "storage": swh_storage_backend_config,
-            }
-        },
+        obj={"config": restore_config},
         catch_exceptions=False,
     )
     assert result.exit_code == 0
@@ -682,7 +705,7 @@ def test_cli_recovery_bundle_restore_from_yubikeys(
 def test_cli_recovery_bundle_restore_bad_decryption_key_argument(
     sample_recovery_bundle_path,  # noqa: F811
     swh_storage,
-    swh_storage_backend_config,
+    restore_config,
 ):
     runner = CliRunner()
     result = runner.invoke(
@@ -691,12 +714,7 @@ def test_cli_recovery_bundle_restore_bad_decryption_key_argument(
             "--decryption-key=a_garbage_decryption_key",
             sample_recovery_bundle_path,
         ],
-        obj={
-            "config": {
-                **DEFAULT_CONFIG,
-                "storage": swh_storage_backend_config,
-            }
-        },
+        obj={"config": restore_config},
         catch_exceptions=False,
     )
     assert result.exit_code != 0
@@ -706,7 +724,7 @@ def test_cli_recovery_bundle_restore_bad_decryption_key_argument(
 def test_cli_recovery_bundle_restore_wrong_decryption_key(
     sample_recovery_bundle_path,  # noqa: F811
     swh_storage,
-    swh_storage_backend_config,
+    restore_config,
 ):
     runner = CliRunner()
     result = runner.invoke(
@@ -715,12 +733,7 @@ def test_cli_recovery_bundle_restore_wrong_decryption_key(
             "--decryption-key=AGE-SECRET-KEY-1SPTRNLVZYFGVFZ2ZXVUKSEZ6MRP2HNJFCJZGXL8Q3JMA3CJZXPFS9Y7LSD",
             sample_recovery_bundle_path,
         ],
-        obj={
-            "config": {
-                **DEFAULT_CONFIG,
-                "storage": swh_storage_backend_config,
-            }
-        },
+        obj={"config": restore_config},
         catch_exceptions=False,
     )
     assert result.exit_code != 0
@@ -728,7 +741,8 @@ def test_cli_recovery_bundle_restore_wrong_decryption_key(
 
 
 def test_cli_recovery_bundle_restore_non_existent_bundle(
-    swh_storage, swh_storage_backend_config
+    swh_storage,
+    restore_config,
 ):
     runner = CliRunner()
     with runner.isolated_filesystem():
@@ -738,12 +752,7 @@ def test_cli_recovery_bundle_restore_non_existent_bundle(
                 f"--decryption-key={OBJECT_SECRET_KEY}",
                 "non-existent.recovery-bundle",
             ],
-            obj={
-                "config": {
-                    **DEFAULT_CONFIG,
-                    "storage": swh_storage_backend_config,
-                }
-            },
+            obj={"config": restore_config},
             catch_exceptions=False,
         )
         assert result.exit_code != 0

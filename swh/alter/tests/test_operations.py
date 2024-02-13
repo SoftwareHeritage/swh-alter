@@ -11,6 +11,7 @@ import pytest
 import yaml
 
 from swh.model.swhids import ExtendedObjectType, ExtendedSWHID
+from swh.storage.interface import StorageInterface
 
 from ..operations import Remover, RemoverError
 from ..recovery_bundle import SecretSharing
@@ -29,13 +30,12 @@ from .test_removable import storage_with_references_from_forked_origin  # noqa: 
 
 @pytest.fixture
 def remover(
-    mocker,
     storage_with_references_from_forked_origin,  # noqa: F811
     graph_client_with_only_initial_origin,  # noqa: F811
 ):
     return Remover(
-        storage_with_references_from_forked_origin,
-        graph_client_with_only_initial_origin,
+        storage=storage_with_references_from_forked_origin,
+        graph_client=graph_client_with_only_initial_origin,
     )
 
 
@@ -172,54 +172,27 @@ def test_remover_create_recovery_bundle_fails_with_expire_in_the_past(
         )
 
 
-def test_remover_remove_from_storage(
+def test_remover_remove(
     mocker,
-    storage_with_references_from_forked_origin,  # noqa:F811
-    remover,
+    storage_with_references_from_forked_origin,  # noqa: F811
+    graph_client_with_only_initial_origin,  # noqa: F811
 ):
-    storage = storage_with_references_from_forked_origin
-    swhids = [
-        "swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165",
-        "swh:1:snp:0000000000000000000000000000000000000022",
-        "swh:1:rel:0000000000000000000000000000000000000021",
-        "swh:1:rev:0000000000000000000000000000000000000018",
-        "swh:1:rev:0000000000000000000000000000000000000013",
-        "swh:1:dir:0000000000000000000000000000000000000017",
-        "swh:1:dir:0000000000000000000000000000000000000016",
-        "swh:1:cnt:0000000000000000000000000000000000000015",
-        "swh:1:cnt:0000000000000000000000000000000000000014",
-    ]
-    mocker.patch.object(storage, "object_delete", return_value={"origin:delete": 0})
-    remover.swhids_to_remove = [ExtendedSWHID.from_string(swhid) for swhid in swhids]
-    remover.remove()
-    storage.object_delete.assert_called_once()
-    args, kwargs = storage.object_delete.call_args
-    assert set(args[0]) == {ExtendedSWHID.from_string(swhid) for swhid in swhids}
-
-
-def test_remover_remove_from_extra_storage(
-    mocker,
-):
-    primary_storage = mocker.MagicMock()
-    graph_client = mocker.MagicMock()
-    journal_writer = mocker.MagicMock()
-    extra_storage_one = mocker.MagicMock()
-    extra_storage_one.object_delete.return_value = {"origin:delete": 0}
-    extra_storage_two = mocker.MagicMock()
-    extra_storage_two.object_delete.return_value = {"origin:delete": 0}
+    removal_storage_one = mocker.MagicMock()
+    removal_storage_one.object_delete.return_value = {"origin:delete": 0}
+    removal_storage_two = mocker.MagicMock()
+    removal_storage_two.object_delete.return_value = {"origin:delete": 0}
     remover = Remover(
-        primary_storage,
-        graph_client,
-        journal_writer,
-        extra_storages={"one": extra_storage_one, "two": extra_storage_two},
+        storage_with_references_from_forked_origin,
+        graph_client_with_only_initial_origin,
+        removal_storages={"one": removal_storage_one, "two": removal_storage_two},
     )
     remover.swhids_to_remove = [
         ExtendedSWHID.from_string("swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165"),
     ]
     remover.remove()
-    for extra in (extra_storage_one, extra_storage_two):
-        extra.object_delete.assert_called_once()
-        args, _ = extra.object_delete.call_args
+    for storage in (removal_storage_one, removal_storage_two):
+        storage.object_delete.assert_called_once()
+        args, _ = storage.object_delete.call_args
         assert set(args[0]) == set(remover.swhids_to_remove)
 
 
@@ -328,7 +301,8 @@ def test_remover_remove_fails_when_new_references_have_been_added(
 
 def test_remover_restore_recovery_bundle(
     mocker,
-    remover,
+    storage_with_references_from_forked_origin,  # noqa: F811
+    graph_client_with_only_initial_origin,  # noqa: F811
     secret_sharing_conf,
     tmp_path,
 ):
@@ -336,6 +310,13 @@ def test_remover_restore_recovery_bundle(
     mock = mocker.patch("swh.alter.operations.RecoveryBundle", autospec=True)
     instance = mock.return_value
     instance.restore.return_value = {"origin": 1}
+    restoration_storage = mocker.Mock(spec=StorageInterface)
+
+    remover = Remover(
+        storage=storage_with_references_from_forked_origin,
+        graph_client=graph_client_with_only_initial_origin,
+        restoration_storage=restoration_storage,
+    )
 
     swhids = [
         ExtendedSWHID.from_string("swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165")
@@ -348,4 +329,4 @@ def test_remover_restore_recovery_bundle(
     )
     remover.restore_recovery_bundle()
 
-    instance.restore.assert_called_once()
+    instance.restore.assert_called_once_with(restoration_storage)

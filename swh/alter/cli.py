@@ -86,34 +86,33 @@ def alter_cli_group(ctx):
 
         \b
         storage:
-          cls: postgresql
-          db: "service=…"
-          objstorage:
-            cls: remote
-            url: http://nginx:5080/objstorage
-          journal_writer:
-            cls: kafka
-            brokers:
-            - kafka
-            prefix: swh.journal.objects
-            client_id: swh.alter
-            anonymize: true
-
+          cls: remote
+          url: https://storage-cassandra-ro.softwareheritage.org
         \b
         graph:
           url: "http://granet.internal.softwareheritage.org:5009/graph"
         \b
-        extra_storages:
-          cassandra:
+        restoration_storage:
+          cls: remote
+          url: https://storage-rw.softwareheritage.org
+        \b
+        removal_storages:
+          old_primary:
+            cls: postgresql
+            db: "service=swh"
+          new_primary:
             cls: cassandra
             hosts:
-            - cassandra-seed.example.org
+            - cassandra-seed
             keyspace: swh
-          another-mirror:
-            cls: postgresql
-            db: "host=…"
-            objstorage:
-                cls: memory
+        \b
+        removal_journals:
+          main_journal:
+            cls: kafka
+            brokers:
+            - kafka1.internal.softwareheritage.org
+            prefix: swh.journal.objects
+            client_id: swh.alter.removals
         \b
         recovery_bundles:
           secret_sharing:
@@ -214,7 +213,7 @@ def remove(
     from swh.storage import get_storage
     from swh.storage.interface import ObjectDeletionInterface
 
-    from .operations import Remover, RemoverError, StorageWithDelete, logger
+    from .operations import Remover, RemoverError, logger
     from .recovery_bundle import SecretSharing
 
     logger.propagate = False
@@ -229,28 +228,42 @@ def remove(
         raise click.ClickException(f"Unable to connect to the graph server: {e.args}")
 
     storage = get_storage(**conf["storage"])
-    assert hasattr(
-        storage, "object_delete"
-    ), "primary storage does not implement ObjectDeletionInterface"
 
-    if "journal_writer" in conf:
-        journal_writer = get_journal_writer(**conf["journal_writer"])
+    if not dry_run:
+        if "restoration_storage" not in conf:
+            raise click.ClickException(
+                "Configuration does not define `restoration_storage`"
+            )
+        if "removal_storages" not in conf or len(conf["removal_storages"]) == 0:
+            raise click.ClickException(
+                "Configuration does not define any `removal_storages`"
+            )
+        if "removal_journals" not in conf or len(conf["removal_journals"]) == 0:
+            raise click.ClickException(
+                "Configuration does not define any `removal_journals`"
+            )
+
+    restoration_storage = (
+        get_storage(**conf["restoration_storage"])
+        if "restoration_storage" in conf
+        else None
+    )
+
+    removal_storages = {}
+    for name, d in conf.get("removal_storages", {}).items():
+        removal_storage = get_storage(**d)
+        assert hasattr(
+            removal_storage, "object_delete"
+        ), f"storage “{name}” does not implement ObjectDeletionInterface"
+        removal_storages[name] = removal_storage
+
+    removal_journals = {}
+    for name, d in conf.get("removal_journals", {}).items():
+        journal_writer = get_journal_writer(**d)
         assert isinstance(
             journal_writer, KafkaJournalWriter
         ), "journal writer is not kafka-based"
-    else:
-        journal_writer = None
-
-    if "extra_storages" in conf:
-        extra_storages = {
-            name: get_storage(**d) for name, d in conf["extra_storages"].items()
-        }
-        for name in extra_storages.keys():
-            assert hasattr(
-                extra_storages[name], "object_delete"
-            ), f"storage “{name}” does not implement ObjectDeletionInterface"
-    else:
-        extra_storages = {}
+        removal_journals[name] = journal_writer
 
     try:
         secret_sharing = SecretSharing.from_dict(
@@ -260,10 +273,11 @@ def remove(
         raise click.ClickException(f"Wrong secret sharing configuration: {e.args[0]}")
 
     remover = Remover(
-        cast(StorageWithDelete, storage),
-        graph_client,
-        cast(Optional[KafkaJournalWriter], journal_writer),
-        cast(Dict[str, ObjectDeletionInterface], extra_storages),
+        storage=storage,
+        graph_client=graph_client,
+        restoration_storage=restoration_storage,
+        removal_storages=cast(Dict[str, ObjectDeletionInterface], removal_storages),
+        removal_journals=cast(Dict[str, KafkaJournalWriter], removal_journals),
     )
     try:
         removable_swhids = remover.get_removable(
@@ -660,13 +674,13 @@ def restore(
     conf = ctx.obj["config"]
     from swh.storage import get_storage
 
-    storage = get_storage(**conf["storage"])
+    restoration_storage = get_storage(**conf["restoration_storage"])
 
     secret_key_provider = get_object_decryption_key_provider(ctx)
     bundle = RecoveryBundle(recovery_bundle, secret_key_provider)
     try:
         # XXX: we could use click.progressbar here
-        results = bundle.restore(storage)
+        results = bundle.restore(restoration_storage)
     except WrongDecryptionKey:
         click.echo(
             f"Wrong decryption key for this bundle ({bundle.removal_identifier})"

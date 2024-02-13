@@ -39,35 +39,33 @@ The tools will not work without a configuration file. It can be created as
 .. code:: yaml
 
     storage:
-      cls: postgresql
-      db: "service=swh"
-      objstorage:
-        cls: remote
-        url: https://objstorage.softwareheritage.org
-      journal_writer:
-        cls: kafka
-        brokers:
-        - kafka1.internal.softwareheritage.org
-        prefix: swh.journal.objects
-        client_id: swh.alter.additions
-        anonymize: true
+      cls: remote
+      url: https://storage-cassandra-ro.softwareheritage.org
 
     graph:
       url: "http://granet.internal.softwareheritage.org:5009/graph"
 
-    extra_storages:
-      cassandra:
+    restoration_storage:
+      cls: remote
+      url: https://storage-rw.softwareheritage.org
+
+    removal_storages:
+      old_primary:
+        cls: postgresql
+        db: "service=swh"
+      new_primary:
         cls: cassandra
         hosts:
         - cassandra-seed
         keyspace: swh
 
-    journal_writer:
-      cls: kafka
-      brokers:
-      - kafka1.internal.softwareheritage.org
-      prefix: swh.journal.objects
-      client_id: swh.alter.removals
+    removal_journals:
+      main_journal:
+        cls: kafka
+        brokers:
+        - kafka1.internal.softwareheritage.org
+        prefix: swh.journal.objects
+        client_id: swh.alter.removals
 
     recovery_bundles:
       secret_sharing:
@@ -89,14 +87,28 @@ The tools will not work without a configuration file. It can be created as
                   age1yubikey1q0ucnwg558zcwrc752evk3620q2t4mkwz6a0lq9u3clsfmealsmlz330kz2
 
 See the :ref:`configuration reference <cli-config>` for general information
-about the Software Heritage configuration file. In most cases, ``swh-alter``
+about the Software Heritage configuration file. At least, ``swh-alter``
 requires the :ref:`storage <cli-config-storage>` and :ref:`graph <cli-config-graph>`
 sections to be configured properly.
 
-The ``storage`` section will define the “primary” storage from which information
-will be read, objects will be deleted, and to which recovery bundles will be
-restored. ``extra_storage`` may configure more storage components from which
-objects will only be deleted on remove.
+In most cases, multiple *storages* has to be configured:
+
+- The ``storage`` section defines the storage from which information will be
+  read. It is used to determine which objects can be removed from the
+  archive and create recovery bundles. For the latter, it needs to be able to
+  retrieve data from Content objects (through an *objstorage*).
+- The ``restoration_storage`` section defines the storage which will be written
+  to in case recovery bundles need to be resored. Write access is required. For
+  the restoration to fully work, it also needs to be configured to write to an
+  *objstorage* and a *journal*.
+- ``removal_storages`` contains storages (identified by an arbitrary key)
+  from which objects will be removed (when using ``swh alter remove``).
+
+Likewise, ``removal_journals`` defines *journals* from which messages
+will be removed by ``swh alter remove``.
+
+The ``graph`` section is used to determine which objects can be safely removed
+from the archive.
 
 In addition, the organization of the secret sharing process needs to be defined
 in ``secret_sharing``.
