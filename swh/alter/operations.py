@@ -184,15 +184,15 @@ class Remover:
                 fg="green",
             )
 
-        for name, removal_objstorage in self.removal_objstorages.items():
-            self.remove_from_objstorage(name, removal_objstorage)
-
         for name, journal_writer in self.removal_journals.items():
             _secho(f"Removing objects from journal “{name}”…", fg="cyan")
             for object_type, keys in self.journal_objects_to_remove.items():
                 journal_writer.delete(object_type, keys)
             journal_writer.flush()
             _secho(f"Objects removed from journal “{name}”.", fg="green")
+
+        for name, removal_objstorage in self.removal_objstorages.items():
+            self.remove_from_objstorage(name, removal_objstorage)
 
         if self.have_new_references(self.swhids_to_remove):
             raise RemoverError("New references have been added to removed objects")
