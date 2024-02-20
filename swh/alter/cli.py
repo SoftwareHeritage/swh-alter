@@ -96,6 +96,12 @@ def alter_cli_group(ctx):
           cls: remote
           url: https://storage-rw.softwareheritage.org
         \b
+        removal_searches:
+          main:
+            cls: elasticsearch
+            hosts:
+            - elasticsearch:9200
+        \b
         removal_storages:
           old_primary:
             cls: postgresql
@@ -212,11 +218,14 @@ def remove(
     recovery_bundle,
 ) -> None:
     """Remove the given SWHIDs or URLs from the archive."""
+    from swh.core.api import RemoteException
     from swh.graph.http_client import GraphAPIError, RemoteGraphClient
     from swh.journal.writer import get_journal_writer
     from swh.journal.writer.kafka import KafkaJournalWriter
     from swh.objstorage.factory import get_objstorage
     from swh.objstorage.interface import ObjStorageInterface
+    from swh.search import get_search
+    from swh.search.interface import SearchInterface
     from swh.storage import get_storage
     from swh.storage.interface import ObjectDeletionInterface
 
@@ -241,6 +250,10 @@ def remove(
             raise click.ClickException(
                 "Configuration does not define `restoration_storage`"
             )
+        if "removal_searches" not in conf or len(conf["removal_searches"]) == 0:
+            raise click.ClickException(
+                "Configuration does not define any `removal_searches`"
+            )
         if "removal_storages" not in conf or len(conf["removal_storages"]) == 0:
             raise click.ClickException(
                 "Configuration does not define any `removal_storages`"
@@ -259,6 +272,14 @@ def remove(
         if "restoration_storage" in conf
         else None
     )
+
+    removal_searches = {}
+    for name, d in conf.get("removal_searches", {}).items():
+        removal_searches[name] = get_search(**d)
+        try:
+            removal_searches[name].check()
+        except RemoteException as e:
+            raise click.ClickException(f"Search “{name}” is unreachable: {e}")
 
     removal_storages = {}
     for name, d in conf.get("removal_storages", {}).items():
@@ -291,6 +312,7 @@ def remove(
         storage=storage,
         graph_client=graph_client,
         restoration_storage=restoration_storage,
+        removal_searches=cast(Dict[str, SearchInterface], removal_searches),
         removal_storages=cast(Dict[str, ObjectDeletionInterface], removal_storages),
         removal_objstorages=cast(Dict[str, ObjStorageInterface], removal_objstorages),
         removal_journals=cast(Dict[str, KafkaJournalWriter], removal_journals),

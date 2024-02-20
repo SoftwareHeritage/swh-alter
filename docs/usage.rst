@@ -49,6 +49,12 @@ The tools will not work without a configuration file. It can be created as
       cls: remote
       url: https://storage-rw.softwareheritage.org
 
+    removal_searches:
+      main:
+        cls: elasticsearch
+        hosts:
+         - elasticsearch:9200
+
     removal_storages:
       old_primary:
         cls: postgresql
@@ -102,9 +108,11 @@ See the :ref:`configuration reference <cli-config>` for general information
 about the Software Heritage configuration file. ``storage``,
 ``restoration_storage`` and entries in the ``removal_storages`` map uses the
 :ref:`storage configuration <cli-config-storage>`. For ``graph``, see the
-:ref:`graph <cli-config-graph>` section. The entries in the
-``removal_objstorages`` map are *objstorages*. Finally the entries in the
-``removal_journals`` map follow the :ref:`journal <cli-config-journal>` format.
+:ref:`graph <cli-config-graph>` section. The entries in the ``removal_searches``
+map are following the format defined by ``swh-search``. The entries in the
+``removal_objstorages`` map are used by ``swh-objstorage``. Finally the entries
+in the ``removal_journals`` map follow the :ref:`journal <cli-config-journal>`
+format.
 
 In most cases, multiple *storages* have to be configured:
 
@@ -206,15 +214,12 @@ reference (as long as it not referenced elsewhere), from the archive.
     12 objects removed from objstorage “main”.
     Removing objects from objstorage “azure”…
     12 objects removed from objstorage “azure”.
+    Removing origins from search “main”…
+    2 origins removed from search “main”.
 
-Objects will be removed from entries in ``removal_storages``,
-``removal_journals``, ``removal_objstorages`` defined in the configuration
-
-.. warning::
-
-   The implementation of removal is not yet fully complete:
-
-   - Search data in Elasticsearch will not be removed.
+Objects will be removed from entries in ``removal_searches``,
+``removal_storages``, ``removal_journals``, ``removal_objstorages`` defined in
+the configuration.
 
 If during the removal process a reference is added to one of the removed
 objects, the process will be rolled back: the recovery bundle will be used to

@@ -10,7 +10,7 @@ from typing import Dict, List, Optional, TextIO, Union, cast
 
 from swh.graph.http_client import RemoteGraphClient
 from swh.journal.writer.kafka import KafkaJournalWriter
-from swh.model.model import Content, KeyType
+from swh.model.model import Content, KeyType, Origin
 from swh.model.swhids import CoreSWHID, ExtendedObjectType, ExtendedSWHID
 from swh.objstorage.exc import ObjNotFoundError
 from swh.objstorage.interface import (
@@ -18,6 +18,7 @@ from swh.objstorage.interface import (
     ObjStorageInterface,
     objid_from_dict,
 )
+from swh.search.interface import SearchInterface
 from swh.storage.interface import ObjectDeletionInterface, StorageInterface
 
 from .inventory import make_inventory
@@ -53,6 +54,7 @@ class Remover:
         storage: StorageInterface,
         graph_client: RemoteGraphClient,
         restoration_storage: Optional[StorageInterface] = None,
+        removal_searches: Optional[Dict[str, SearchInterface]] = None,
         removal_storages: Optional[Dict[str, ObjectDeletionInterface]] = None,
         removal_objstorages: Optional[Dict[str, ObjStorageInterface]] = None,
         removal_journals: Optional[Dict[str, KafkaJournalWriter]] = None,
@@ -60,6 +62,7 @@ class Remover:
         self.storage = storage
         self.graph_client = graph_client
         self.restoration_storage = restoration_storage
+        self.removal_searches = removal_searches if removal_searches else {}
         self.removal_storages = removal_storages if removal_storages else {}
         self.removal_objstorages = removal_objstorages if removal_objstorages else {}
         self.removal_journals = removal_journals if removal_journals else {}
@@ -67,6 +70,7 @@ class Remover:
         self.object_secret_key: Optional[AgeSecretKey] = None
         self.swhids_to_remove: List[ExtendedSWHID] = []
         self.objids_to_remove: List[CompositeObjId] = []
+        self.origin_urls_to_remove: List[str] = []
         self.journal_objects_to_remove: Dict[
             str, List[KeyType]
         ] = collections.defaultdict(list)
@@ -119,6 +123,9 @@ class Remover:
                     self.objids_to_remove.append(objid_from_dict(content.to_dict()))
         # Register for removal from the journal
         self.journal_objects_to_remove[obj.object_type].append(obj.unique_key())
+        # Register for removal from search
+        if isinstance(obj, Origin):
+            self.origin_urls_to_remove.append(obj.url)
 
     def create_recovery_bundle(
         self,
@@ -176,6 +183,9 @@ class Remover:
             )
 
     def remove(self) -> None:
+        for name, removal_search in self.removal_searches.items():
+            self.remove_from_search(name, removal_search)
+
         for name, removal_storage in self.removal_storages.items():
             _secho(f"Removing objects from storage “{name}”…", fg="cyan")
             result = removal_storage.object_delete(self.swhids_to_remove)
@@ -196,6 +206,15 @@ class Remover:
 
         if self.have_new_references(self.swhids_to_remove):
             raise RemoverError("New references have been added to removed objects")
+
+    def remove_from_search(self, name: str, search: SearchInterface) -> None:
+        _secho(f"Removing origins from search “{name}”…", fg="cyan")
+        count = 0
+        for origin_url in self.origin_urls_to_remove:
+            deleted = search.origin_delete(origin_url)
+            count += 1 if deleted else 0
+        search.flush()
+        _secho(f"{count} origins removed from search “{name}”.", fg="green")
 
     def remove_from_objstorage(
         self, name: str, objstorage: ObjStorageInterface

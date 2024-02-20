@@ -6,12 +6,14 @@
 from datetime import datetime, timedelta, timezone
 import shutil
 import subprocess
+from unittest.mock import call
 
 import pytest
 import yaml
 
 from swh.model.swhids import ExtendedObjectType, ExtendedSWHID
 from swh.objstorage.interface import ObjStorageInterface
+from swh.search.interface import SearchInterface
 from swh.storage.interface import StorageInterface
 
 from ..operations import Remover, RemoverError
@@ -224,6 +226,32 @@ def test_remover_remove_from_objstorages(
     remover.remove()
     for objstorage in (objstorage1, objstorage2):
         objstorage.delete.assert_called_once()
+
+
+def test_remover_remove_from_searches(
+    mocker,
+    storage_with_references_from_forked_origin,  # noqa: F811
+):
+    storage = storage_with_references_from_forked_origin
+    search1 = mocker.Mock(spec=SearchInterface)
+    search2 = mocker.Mock(spec=SearchInterface)
+    graph_client = mocker.MagicMock()
+    remover = Remover(
+        storage,
+        graph_client,
+        removal_searches={"one": search1, "two": search2},
+    )
+    remover.origin_urls_to_remove = [
+        "https://example.com/swh/graph1",
+        "https://example.com/swh/graph2",
+    ]
+    remover.remove()
+    for search in (search1, search2):
+        assert search.origin_delete.call_args_list == [
+            call("https://example.com/swh/graph1"),
+            call("https://example.com/swh/graph2"),
+        ]
+        search.flush.assert_called_once()
 
 
 def test_remover_have_new_references_outside_removed(

@@ -78,6 +78,11 @@ def remove_config():
             "anonymize": True,
         },
     }
+    config["removal_searches"] = {
+        "memory": {
+            "cls": "memory",
+        },
+    }
     config["removal_storages"] = {
         "memory": {
             "cls": "memory",
