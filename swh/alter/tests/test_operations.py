@@ -8,6 +8,7 @@ import logging
 import shutil
 import subprocess
 from unittest.mock import call
+from typing import Any, List, Set, Union
 
 import pytest
 import yaml
@@ -18,7 +19,7 @@ from swh.search.interface import SearchInterface
 from swh.storage.interface import StorageInterface
 
 from ..operations import Remover, RemoverError
-from ..recovery_bundle import SecretSharing
+from ..recovery_bundle import HasSwhid, HasUniqueKey, SecretSharing
 from .test_inventory import (  # noqa
     directory_6_with_multiple_entries_pointing_to_the_same_content,
     snapshot_20_with_multiple_branches_pointing_to_the_same_head,
@@ -26,8 +27,11 @@ from .test_inventory import (  # noqa
 from .test_inventory import graph_client_with_only_initial_origin  # noqa: F401
 from .test_inventory import sample_populated_storage  # noqa: F401
 from .test_recovery_bundle import (
+    OBJECT_SECRET_KEY,
     TWO_GROUPS_REQUIRED_WITH_ONE_MINIMUM_SHARE_EACH_SECRET_SHARING_YAML,
 )
+from .test_recovery_bundle import sample_recovery_bundle  # noqa: F401
+from .test_recovery_bundle import sample_recovery_bundle_path  # noqa: F401
 from .test_removable import inventory_from_forked_origin  # noqa: F401
 from .test_removable import storage_with_references_from_forked_origin  # noqa: F401
 
@@ -427,3 +431,94 @@ def test_remover_restore_recovery_bundle_logs_insert_count_mismatch(
     assert remover.journal_objects_to_remove == {}
 
     assert "Something might be wrong!" in caplog.text
+
+
+def test_remover_register_objects_from_bundle(
+    mocker,
+    remover,
+    sample_recovery_bundle_path,  # noqa: F811
+):
+    obj_swhids: Set[str] = set()
+    # We cannot use a Set as dict are not hashable
+    obj_unique_keys: List[Any] = []
+
+    def register_object(obj: Union[HasSwhid, HasUniqueKey]):
+        if hasattr(obj, "swhid"):
+            obj_swhids.add(str(obj.swhid()))
+        obj_unique_keys.append(obj.unique_key())
+
+    mocker.patch.object(remover, "register_object", side_effect=register_object)
+
+    remover.register_objects_from_bundle(
+        recovery_bundle_path=sample_recovery_bundle_path,
+        object_secret_key=OBJECT_SECRET_KEY,
+    )
+
+    assert obj_swhids == {
+        "swh:1:cnt:d81cc0710eb6cf9efd5b920a8453e1e07157b6cd",
+        "swh:1:cnt:c932c7649c6dfa4b82327d121215116909eb3bea",
+        "swh:1:cnt:33e45d56f88993aae6a0198013efa80716fd8920",
+        "swh:1:dir:5256e856a0a0898966d6ba14feb4388b8b82d302",
+        "swh:1:dir:4b825dc642cb6eb9a060e54bf8d69288fbee4904",
+        "swh:1:dir:afa0105cfcaa14fdbacee344e96659170bb1bda5",
+        "swh:1:rev:01a7114f36fddd5ef2511b2cadda237a68adbb12",
+        "swh:1:rev:a646dd94c912829659b22a1e7e143d2fa5ebde1b",
+        "swh:1:rel:f7f222093a18ec60d781070abec4a630c850b837",
+        "swh:1:rel:db81a26783a3f4a9db07b4759ffc37621f159bb2",
+        "swh:1:snp:9b922e6d8d5b803c1582aabe5525b7b91150788e",
+        "swh:1:snp:db99fda25b43dc5cd90625ee4b0744751799c917",
+        "swh:1:ori:33abd4b4c5db79c7387673f71302750fd73e0645",
+        "swh:1:ori:9147ab9c9287940d4fdbe95d8780664d7ad2dfc0",
+    }
+    assert obj_unique_keys == [
+        bytes.fromhex("34973274ccef6ab4dfaaf86599792fa9c3fe4689"),
+        bytes.fromhex("3e21cc4942a4234c9e5edd8a9cacd1670fe59f13"),
+        {
+            "sha1": bytes.fromhex("43e45d56f88993aae6a0198013efa80716fd8920"),
+            "sha1_git": bytes.fromhex("33e45d56f88993aae6a0198013efa80716fd8920"),
+            "sha256": bytes.fromhex(
+                "7bbd052ab054ef222c1c87be60cd191addedd24cc882d1f5f7f7be61dc61bb3a"
+            ),
+            "blake2s256": bytes.fromhex(
+                "ade18b1adecb33f891ca36664da676e12c772cc193778aac9a137b8dc5834b9b"
+            ),
+        },
+        bytes.fromhex("5256e856a0a0898966d6ba14feb4388b8b82d302"),
+        bytes.fromhex("4b825dc642cb6eb9a060e54bf8d69288fbee4904"),
+        bytes.fromhex("afa0105cfcaa14fdbacee344e96659170bb1bda5"),
+        bytes.fromhex("01a7114f36fddd5ef2511b2cadda237a68adbb12"),
+        bytes.fromhex("a646dd94c912829659b22a1e7e143d2fa5ebde1b"),
+        bytes.fromhex("f7f222093a18ec60d781070abec4a630c850b837"),
+        bytes.fromhex("db81a26783a3f4a9db07b4759ffc37621f159bb2"),
+        bytes.fromhex("9b922e6d8d5b803c1582aabe5525b7b91150788e"),
+        bytes.fromhex("db99fda25b43dc5cd90625ee4b0744751799c917"),
+        {"url": "https://github.com/user1/repo1"},
+        {
+            "origin": "https://github.com/user1/repo1",
+            "date": "2015-01-01 23:00:00+00:00",
+        },
+        {
+            "origin": "https://github.com/user1/repo1",
+            "date": "2017-01-01 23:00:00+00:00",
+        },
+        {
+            "origin": "https://github.com/user1/repo1",
+            "visit": "1",
+            "date": "2015-01-01 23:00:00+00:00",
+        },
+        {
+            "origin": "https://github.com/user1/repo1",
+            "visit": "2",
+            "date": "2017-01-01 23:00:00+00:00",
+        },
+        {"url": "https://github.com/user2/repo1"},
+        {
+            "origin": "https://github.com/user2/repo1",
+            "date": "2015-01-01 23:00:00+00:00",
+        },
+        {
+            "origin": "https://github.com/user2/repo1",
+            "visit": "1",
+            "date": "2015-01-01 23:00:00+00:00",
+        },
+    ]

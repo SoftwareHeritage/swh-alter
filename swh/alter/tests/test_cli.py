@@ -10,7 +10,6 @@ import os
 import shutil
 import socket
 import sys
-from typing import List
 
 from click.testing import CliRunner
 import pytest
@@ -26,10 +25,11 @@ from ..cli import (
     recover_decryption_key,
     remove,
     restore,
+    resume_removal,
     rollover,
 )
 from ..operations import Remover
-from ..recovery_bundle import age_decrypt
+from ..recovery_bundle import AgeSecretKey, age_decrypt
 from .test_inventory import (  # noqa
     directory_6_with_multiple_entries_pointing_to_the_same_content,
     snapshot_20_with_multiple_branches_pointing_to_the_same_head,
@@ -206,6 +206,32 @@ def test_cli_remove_dry_run_stop_before_removal(
     remove_method.assert_not_called()
 
 
+def test_cli_remove_display_decryption_key(
+    capture_output, mocker, mocked_external_resources, remove_config_path
+):
+    mocker.patch.object(Remover, "get_removable", return_value=[])
+    mocker.patch.object(
+        Remover, "create_recovery_bundle", return_value="SUPER-SECRET-KEY"
+    )
+    mocker.patch.object(Remover, "remove")
+    runner = CliRunner()
+    result = runner.invoke(
+        alter_cli_group,
+        [
+            "remove",
+            "--identifier",
+            "test",
+            "--recovery-bundle",
+            "/nonexistent",
+            "--dry-run=stop-before-removal",
+            "swh:1:ori:cafecafecafecafecafecafecafecafecafecafe",
+        ],
+        env={"SWH_CONFIG_FILENAME": remove_config_path},
+    )
+    assert result.exit_code == 0
+    assert "Recovery bundle decryption key: SUPER-SECRET-KEY" in result.output
+
+
 def test_cli_remove_colored_output(
     capture_output, mocker, mocked_external_resources, remove_config_path
 ):
@@ -348,6 +374,7 @@ def remover_for_bundle_creation(mocker):
         remover.journal_objects_to_remove["origin"] = [
             bytes.fromhex("8f50d3f60eae370ddbf85c86219c55108a350165")
         ]
+        return "SUPER-SECRET-DECRYPTION-KEY"
 
     mocker.patch.object(
         remover, "create_recovery_bundle", side_effect=mock_create_recovery_bundle
@@ -459,10 +486,10 @@ def test_cli_remove_restores_bundle_when_remove_fails(
 ):
     remover = remover_for_bundle_creation
 
-    def fake_remove(swhids: List[ExtendedSWHID]) -> None:
+    def fake_remove() -> None:
         from ..operations import RemoverError
 
-        raise RemoverError("test")
+        raise RemoverError("let’s pretend something failed during remove")
 
     mocker.patch.object(remover, "remove", wraps=fake_remove)
     mocker.patch.object(remover, "restore_recovery_bundle")
@@ -482,6 +509,36 @@ def test_cli_remove_restores_bundle_when_remove_fails(
     )
     assert result.exit_code == 1
     remover.restore_recovery_bundle.assert_called_once()
+
+
+def test_cli_recovery_bundle_resume_removal_restores_bundle_when_remove_fails(
+    capture_output,
+    mocker,
+    mocked_external_resources,
+    remove_config_path,
+    sample_recovery_bundle_path,  # noqa: F811
+):
+    def fake_remove() -> None:
+        from ..operations import RemoverError
+
+        raise RemoverError("let’s pretend something failed during remove")
+
+    mocker.patch.object(Remover, "remove", wraps=fake_remove)
+    runner = CliRunner()
+    result = runner.invoke(
+        alter_cli_group,
+        [
+            "recovery-bundle",
+            "resume-removal",
+            f"--decryption-key={OBJECT_SECRET_KEY}",
+            sample_recovery_bundle_path,
+        ],
+        env={"SWH_CONFIG_FILENAME": remove_config_path},
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 1, result.output
+    assert "Restoring recovery bundle" in result.output
+    assert "Something might be wrong" not in result.output
 
 
 def test_cli_recovery_bundle_extract_content_using_decryption_key_to_file(
@@ -804,6 +861,75 @@ def test_cli_recovery_bundle_restore_non_existent_bundle(
         )
         assert result.exit_code != 0
         assert "does not exist" in result.output
+
+
+@pytest.fixture
+def remover_for_resume_removal(
+    mocker,
+    storage_with_references_from_forked_origin,  # noqa: F811
+    graph_client_with_only_initial_origin,  # noqa: F811
+    mocked_external_resources,
+):
+    remover = Remover(
+        storage=storage_with_references_from_forked_origin,
+        graph_client=graph_client_with_only_initial_origin,
+    )
+    mocker.patch.object(remover, "remove", return_value=None)
+    mocker.patch("swh.alter.operations.Remover", return_value=remover)
+    return remover
+
+
+def test_cli_recovery_bundle_resume_removal(
+    mocker,
+    remove_config,
+    remover_for_resume_removal,
+    sample_recovery_bundle_path,  # noqa: F811
+):
+    def register_objects_from_bundle(
+        recovery_bundle_path: str, object_secret_key: AgeSecretKey
+    ):
+        assert recovery_bundle_path == sample_recovery_bundle_path
+        assert object_secret_key == OBJECT_SECRET_KEY
+
+    remover = remover_for_resume_removal
+    mocker.patch.object(
+        remover,
+        "register_objects_from_bundle",
+        side_effect=register_objects_from_bundle,
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        resume_removal,
+        [
+            f"--decryption-key={OBJECT_SECRET_KEY}",
+            sample_recovery_bundle_path,
+        ],
+        catch_exceptions=False,
+        obj={"config": remove_config},
+    )
+    assert result.exit_code == 0
+    remover.register_objects_from_bundle.assert_called_once()
+    remover.remove.assert_called_once()
+
+
+def test_cli_recovery_bundle_resume_removal_prompt_for_key(
+    sample_recovery_bundle_path,  # noqa: F811
+    remove_config,
+    remover_for_resume_removal,
+):
+    runner = CliRunner()
+    result = runner.invoke(
+        resume_removal,
+        [
+            sample_recovery_bundle_path,
+        ],
+        catch_exceptions=False,
+        input=f"{OBJECT_SECRET_KEY}\n",
+        obj={"config": remove_config},
+    )
+    assert result.exit_code == 0
+    assert "Decryption key:" in result.output
 
 
 @pytest.fixture

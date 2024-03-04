@@ -204,6 +204,7 @@ reference (as long as it not referenced elsewhere), from the archive.
     Proceed with removing 29 objects? [y/N]: y
     Creating recovery bundle…
     Recovery bundle created.
+    Recovery bundle decryption key: AGE-SECRET-KEY-15PQHAG…
     Removing objects from storage “old_primary”…
     29 objects removed from storage “old_primary”.
     Removing objects from storage “new_primary”…
@@ -225,7 +226,9 @@ If during the removal process a reference is added to one of the removed
 objects, the process will be rolled back: the recovery bundle will be used to
 restore objects as they were to ``restoration_storage``. This will also be the
 case if any error happens during the process. The recovery bundle will be left
-intact.
+intact. The process can be retried using
+``swh alter recovery-bundle resume-removal`` command, using the decryption key
+printed on the output for this purpose.
 
 Options:
 
@@ -245,6 +248,27 @@ Options:
 
 ``--expire YYYY-MM-DD``
     Date when the recovery bundle should be removed.
+
+Resuming a removal from a recovery bundle
+-----------------------------------------
+
+``swh alter recovery-bundle resume-removal`` will remove from the archive
+all objects contained in a recovery bundle. This can be useful after
+using ``swh alter remove --dry-run=stop-before-removal`` or in case
+of failures from external resources during the removal operation.
+
+.. code:: console
+
+    $ swh alter recovery-bundle resume-removal tdn-2023-07-14-01.swh-recovery-bundle
+
+A prompt will ask for the decryption key if it has not been specified via the
+relevant environment variable or option.
+
+Options:
+
+``--decryption-key AGE_SECRET_KEY``
+    Use the given decryption key to access the objects stored in the bundle.
+    The environment variable ``SWH_BUNDLE_DECRYPTION_KEY`` can be used instead.
 
 Restoring from a recovery bundle
 --------------------------------

@@ -5,6 +5,7 @@
 
 import collections
 from datetime import datetime
+import itertools
 import logging
 from typing import Dict, List, Optional, TextIO, Union, cast
 
@@ -127,6 +128,40 @@ class Remover:
         if isinstance(obj, Origin):
             self.origin_urls_to_remove.append(obj.url)
 
+    def register_objects_from_bundle(
+        self, recovery_bundle_path: str, object_secret_key: AgeSecretKey
+    ):
+        assert self.recovery_bundle_path is None
+        assert self.object_secret_key is None
+
+        def key_provider(_):
+            return object_secret_key
+
+        bundle = RecoveryBundle(recovery_bundle_path, key_provider)
+        _secho(
+            f"Resuming removal from bundle “{bundle.removal_identifier}”…",
+            fg="cyan",
+            bold=True,
+        )
+        self.recovery_bundle_path = recovery_bundle_path
+        self.object_secret_key = object_secret_key
+
+        for obj in itertools.chain(
+            bundle.contents(),
+            bundle.skipped_contents(),
+            bundle.directories(),
+            bundle.revisions(),
+            bundle.releases(),
+            bundle.snapshots(),
+        ):
+            self.register_object(cast(Union[HasSwhid, HasUniqueKey], obj))
+        for origin in bundle.origins():
+            self.register_object(origin)
+            for obj in itertools.chain(
+                bundle.origin_visits(origin), bundle.origin_visit_statuses(origin)
+            ):
+                self.register_object(cast(Union[HasSwhid, HasUniqueKey], obj))
+
     def create_recovery_bundle(
         self,
         /,
@@ -136,7 +171,7 @@ class Remover:
         removal_identifier: str,
         reason: Optional[str] = None,
         expire: Optional[datetime] = None,
-    ) -> None:
+    ) -> AgeSecretKey:
         object_public_key, self.object_secret_key = generate_age_keypair()
         decryption_key_shares = secret_sharing.generate_encrypted_shares(
             removal_identifier, self.object_secret_key
@@ -160,6 +195,7 @@ class Remover:
             creator.backup_swhids(removable_swhids)
         self.recovery_bundle_path = recovery_bundle_path
         _secho("Recovery bundle created.", fg="green")
+        return self.object_secret_key
 
     def restore_recovery_bundle(self) -> None:
         assert self.restoration_storage

@@ -353,7 +353,7 @@ def remove(
                 abort=True,
             )
 
-        remover.create_recovery_bundle(
+        decryption_key = remover.create_recovery_bundle(
             secret_sharing=secret_sharing,
             removable_swhids=removable_swhids,
             recovery_bundle_path=recovery_bundle,
@@ -361,6 +361,7 @@ def remove(
             reason=reason,
             expire=expire.astimezone() if expire else None,
         )
+        click.secho(f"Recovery bundle decryption key: {decryption_key}", fg="blue")
     except RemoverError as e:
         click.secho(e.args[0], err=True, fg="red")
         ctx.exit(1)
@@ -737,6 +738,45 @@ def restore(
             f"Wrong decryption key for this bundle ({bundle.removal_identifier})"
         )
         ctx.exit(2)
+
+
+@recovery_bundle_cli_group.command(name="resume-removal")
+@click.option(
+    "--decryption-key",
+    metavar="AGE_SECRET_KEY",
+    prompt=True,
+    help="use the given decryption key instead of the bundle shared secrets",
+    envvar="SWH_BUNDLE_DECRYPTION_KEY",
+)
+@click.argument(
+    "recovery-bundle",
+    type=click.Path(exists=True, dir_okay=False, readable=True),
+    required=True,
+)
+@click.pass_context
+def resume_removal(
+    ctx,
+    recovery_bundle,
+    decryption_key=None,
+) -> None:
+    """Resume a removal operation from a recovery bundle."""
+    from .recovery_bundle import WrongDecryptionKey
+
+    remover = get_remover(ctx)
+
+    try:
+        remover.register_objects_from_bundle(
+            recovery_bundle_path=recovery_bundle, object_secret_key=decryption_key
+        )
+    except WrongDecryptionKey:
+        click.echo("Wrong decryption key for this bundle")
+        ctx.exit(2)
+    try:
+        remover.remove()
+    except Exception as e:
+        click.secho(str(e), err=True, fg="red", bold=True)
+        remover.restore_recovery_bundle()
+        ctx.exit(1)
 
 
 def _strip_rage_report(output):
