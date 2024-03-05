@@ -65,16 +65,8 @@ def remove_config():
     config = dict(DEFAULT_CONFIG)
     config["restoration_storage"] = {
         "cls": "memory",
-        "objstorage": {
-            "cls": "memory",
-        },
         "journal_writer": {
-            "cls": "kafka",
-            "brokers": [
-                "kafka1.example.org",
-            ],
-            "prefix": "swh.journal.objects",
-            "client_id": "swh.alter.restores",
+            "cls": "memory",
             "anonymize": True,
         },
     }
