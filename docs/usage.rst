@@ -99,18 +99,22 @@ The tools will not work without a configuration file. It can be created as
                   age1yubikey1q0ucnwg558zcwrc752evk3620q2t4mkwz6a0lq9u3clsfmealsmlz330kz2
 
 See the :ref:`configuration reference <cli-config>` for general information
-about the Software Heritage configuration file. At least, ``swh-alter``
-requires the :ref:`storage <cli-config-storage>` and :ref:`graph <cli-config-graph>`
-sections to be configured properly.
+about the Software Heritage configuration file. ``storage``,
+``restoration_storage`` and entries in the ``removal_storages`` map uses the
+:ref:`storage configuration <cli-config-storage>`. For ``graph``, see the
+:ref:`graph <cli-config-graph>` section. The entries in the
+``removal_objstorages`` map are *objstorages*. Finally the entries in the
+``removal_journals`` map follow the :ref:`journal <cli-config-journal>` format.
 
-In most cases, multiple *storages* has to be configured:
+In most cases, multiple *storages* have to be configured:
 
 - The ``storage`` section defines the storage from which information will be
   read. It is used to determine which objects can be removed from the
   archive and create recovery bundles. For the latter, it needs to be able to
   retrieve data from Content objects (through an *objstorage*).
 - The ``restoration_storage`` section defines the storage which will be written
-  to in case recovery bundles need to be resored. Write access is required. For
+  to in case recovery bundles need to be resored. Usually, this should be the
+  same configuration as used for *loaders*. Write access is required. For
   the restoration to fully work, it also needs to be configured to write to an
   *objstorage* and a *journal*.
 - ``removal_storages`` contains storages (identified by an arbitrary key)
@@ -192,25 +196,29 @@ reference (as long as it not referenced elsewhere), from the archive.
     Proceed with removing 29 objects? [y/N]: y
     Creating recovery bundle…
     Recovery bundle created.
-    Removing objects from primary storage…
-    29 objects removed from primary storage.
-    Removing objects from storage “cassandra”…
-    29 objects removed from storage “cassandra”.
+    Removing objects from storage “old_primary”…
+    29 objects removed from storage “old_primary”.
+    Removing objects from storage “new_primary”…
+    29 objects removed from storage “new_primary”.
+    Removing objects from journal “main”…
+    Objects removed from storage “main”.
+    Removing objects from objstorage “main”…
+    12 objects removed from objstorage “main”.
+    Removing objects from objstorage “azure”…
+    12 objects removed from objstorage “azure”.
 
-Objects will be removed from the “primary” storage defined in the configuration
-and any other instances defined in a ``extra_storage`` section.
+Objects will be removed from entries in ``removal_storages``,
+``removal_journals``, ``removal_objstorages`` defined in the configuration
 
 .. warning::
 
    The implementation of removal is not yet fully complete:
 
-   - Contents in _objstorage_ will not be removed.
-   - Objects in the _journal_ will not be removed.
    - Search data in Elasticsearch will not be removed.
 
 If during the removal process a reference is added to one of the removed
 objects, the process will be rolled back: the recovery bundle will be used to
-restore objects as they were to the “primary” storage. This will also be the
+restore objects as they were to ``restoration_storage``. This will also be the
 case if any error happens during the process. The recovery bundle will be left
 intact.
 
