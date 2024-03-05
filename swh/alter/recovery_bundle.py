@@ -4,6 +4,7 @@
 # See top-level LICENSE file for more information
 
 from abc import abstractmethod
+import collections
 import contextlib
 from datetime import datetime, timezone
 import itertools
@@ -576,7 +577,7 @@ class RecoveryBundle:
         )
 
     def restore(self, storage: StorageInterface) -> Dict[str, int]:
-        result = {}
+        result: collections.defaultdict[str, int] = collections.defaultdict(int)
         result.update(storage.content_add(list(self.contents())))
         result.update(storage.skipped_content_add(list(self.skipped_contents())))
         result.update(storage.directory_add(list(self.directories())))
@@ -590,8 +591,12 @@ class RecoveryBundle:
             # do not return result info.
             # Also you _do_ need to pass a list and not an iterator otherwise
             # nothing gets added.
-            storage.origin_visit_add(list(self.origin_visits(origin)))
-            storage.origin_visit_status_add(list(self.origin_visit_statuses(origin)))
+            origin_visits = list(self.origin_visits(origin))
+            storage.origin_visit_add(origin_visits)
+            result["origin_visit:add"] += len(origin_visits)
+            origin_visit_statuses = list(self.origin_visit_statuses(origin))
+            storage.origin_visit_status_add(origin_visit_statuses)
+            result["origin_visit_status:add"] += len(origin_visit_statuses)
         logger.info(
             "Restoration complete. Results: \n"
             "- Content objects added: %(content:add)s\n"
@@ -601,8 +606,10 @@ class RecoveryBundle:
             "- Revision objects added: %(revision:add)s\n"
             "- Release objects added: %(release:add)s\n"
             "- Snapshot objects added: %(snapshot:add)s\n"
-            "- Origin objects added: %(origin:add)s\n",
-            result
+            "- Origin objects added: %(origin:add)s\n"
+            "- OriginVisit objects added: %(origin_visit:add)s\n"
+            "- OriginVisitStatus objects added: %(origin_visit_status:add)s\n",
+            result,
         )
         return result
 

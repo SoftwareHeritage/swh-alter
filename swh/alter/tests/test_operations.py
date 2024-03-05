@@ -4,6 +4,7 @@
 # See top-level LICENSE file for more information
 
 from datetime import datetime, timedelta, timezone
+import logging
 import shutil
 import subprocess
 from unittest.mock import call
@@ -367,7 +368,11 @@ def test_remover_restore_recovery_bundle(
     bundle_path = tmp_path / "test.swh-recovery-bundle"
     mock = mocker.patch("swh.alter.operations.RecoveryBundle", autospec=True)
     instance = mock.return_value
-    instance.restore.return_value = {"origin": 1}
+    instance.restore.return_value = {
+        "origin:add": 1,
+        "origin_visit:add": 1,
+        "origin_visit_status:add": 1,
+    }
     restoration_storage = mocker.Mock(spec=StorageInterface)
 
     remover = Remover(
@@ -388,3 +393,32 @@ def test_remover_restore_recovery_bundle(
     remover.restore_recovery_bundle()
 
     instance.restore.assert_called_once_with(restoration_storage)
+
+
+def test_remover_restore_recovery_bundle_logs_insert_count_mismatch(
+    caplog,
+    mocker,
+    storage_with_references_from_forked_origin,  # noqa: F811
+    graph_client_with_only_initial_origin,  # noqa: F811
+    tmp_path,
+):
+    mock = mocker.patch("swh.alter.operations.RecoveryBundle", autospec=True)
+    instance = mock.return_value
+    instance.restore.return_value = {"origin:add": 1}
+    restoration_storage = mocker.Mock(spec=StorageInterface)
+
+    remover = Remover(
+        storage=storage_with_references_from_forked_origin,
+        graph_client=graph_client_with_only_initial_origin,
+        restoration_storage=restoration_storage,
+    )
+    # Force a path. It’ll use the mock anyway
+    remover.recovery_bundle_path = tmp_path / "nonexistent.swh-recovery-bundle"
+
+    with caplog.at_level(logging.DEBUG):
+        remover.restore_recovery_bundle()
+
+    # We force a mismatch situation. Make sure this one is unpopulated:
+    assert remover.journal_objects_to_remove == {}
+
+    assert "Something might be wrong!" in caplog.text

@@ -172,11 +172,16 @@ class Remover:
         _secho("Restoring recovery bundle…", fg="cyan")
         bundle = RecoveryBundle(self.recovery_bundle_path, key_provider)
         result = bundle.restore(self.restoration_storage)
+        # We care about the number of objects, not the byte count
+        result.pop("content:add:bytes", None)
         total = sum(result.values())
         _secho(f"{total} objects restored.", fg="green")
-        if len(self.journal_objects_to_remove) != total:
+        count_from_journal_objects = sum(
+            len(objects) for objects in self.journal_objects_to_remove.values()
+        )
+        if count_from_journal_objects != total:
             _secho(
-                f"{len(self.journal_objects_to_remove)} objects should have "
+                f"{count_from_journal_objects} objects should have "
                 "been restored. Something might be wrong!",
                 fg="red",
                 bold=True,

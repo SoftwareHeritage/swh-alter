@@ -865,6 +865,8 @@ def test_restore(sample_recovery_bundle, swh_storage, sample_data):
         "release:add": 2,
         "snapshot:add": 2,
         "origin:add": 2,
+        "origin_visit:add": 3,
+        "origin_visit_status:add": 3,
     }
     [
         origin,
