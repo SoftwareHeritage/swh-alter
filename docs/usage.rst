@@ -245,9 +245,9 @@ Restoring from a recovery bundle
 --------------------------------
 
 ``swh alter recovery-bundle restore`` will restore all objects contained in a
-recovery bundle to the “primary” storage. In order to proceed, this command
-requires enough shared secrets to be recovered. Alternatively, the bundle
-decryption key can be provided.
+recovery bundle to the storage defined in ``restoration_storage``. In order to
+proceed, this command requires enough shared secrets to be recovered.
+Alternatively, the bundle decryption key can be provided.
 
 This command also requires the appropriate permissions needed to update Software
 Heritage storage, journal and object storage.
