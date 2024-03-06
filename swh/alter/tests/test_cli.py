@@ -5,9 +5,11 @@
 
 from contextlib import closing
 from datetime import datetime, timedelta
+import logging
 import os
 import shutil
 import socket
+import sys
 from typing import List
 
 from click.testing import CliRunner
@@ -18,6 +20,7 @@ from swh.model.swhids import ExtendedSWHID
 
 from ..cli import (
     DEFAULT_CONFIG,
+    alter_cli_group,
     extract_content,
     info,
     recover_decryption_key,
@@ -101,6 +104,28 @@ def remove_config():
     return config
 
 
+@pytest.fixture
+def remove_config_path(tmp_path, remove_config):
+    remove_config_path = tmp_path / "swh-config.yml"
+    remove_config_path.write_text(yaml.dump(remove_config))
+    return str(remove_config_path)
+
+
+@pytest.fixture
+def capture_output(mocker, caplog):
+    # We patch our loggers so they can return to their original
+    # configuration after the test
+    for module in ("swh.alter.operations", "swh.alter.recovery_bundle"):
+        mocker.patch.object(
+            sys.modules[module], "logger", logging.getLogger(f"{module}.tests")
+        )
+
+    # At a higher level we won’t get the right messages in the output
+    caplog.set_level(logging.INFO)
+
+    return caplog
+
+
 def test_cli_remove_dry_run_fails_without_mode(remove_config):
     runner = CliRunner()
     result = runner.invoke(
@@ -181,13 +206,16 @@ def test_cli_remove_dry_run_stop_before_removal(
     remove_method.assert_not_called()
 
 
-def test_cli_remove_colored_output(mocker, mocked_external_resources, remove_config):
+def test_cli_remove_colored_output(
+    capture_output, mocker, mocked_external_resources, remove_config_path
+):
     import click
 
     runner = CliRunner()
     result = runner.invoke(
-        remove,
+        alter_cli_group,
         [
+            "remove",
             "--identifier",
             "test",
             "--recovery-bundle",
@@ -195,7 +223,7 @@ def test_cli_remove_colored_output(mocker, mocked_external_resources, remove_con
             "--dry-run=stop-before-recovery-bundle",
             "swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165",
         ],
-        obj={"config": remove_config},
+        env={"SWH_CONFIG_FILENAME": remove_config_path},
         color=True,
     )
     assert result.exit_code == 0
@@ -619,19 +647,29 @@ def restore_config(swh_storage_backend_config):
     }
 
 
+@pytest.fixture
+def restore_config_path(tmp_path, restore_config):
+    restore_config_path = tmp_path / "swh-config.yml"
+    restore_config_path.write_text(yaml.dump(restore_config))
+    return str(restore_config_path)
+
+
 def test_cli_recovery_bundle_restore_adds_all_objects(
+    capture_output,
     sample_recovery_bundle_path,  # noqa: F811
     swh_storage,
-    restore_config,
+    restore_config_path,
 ):
     runner = CliRunner()
     result = runner.invoke(
-        restore,
+        alter_cli_group,
         [
+            "recovery-bundle",
+            "restore",
             f"--decryption-key={OBJECT_SECRET_KEY}",
             sample_recovery_bundle_path,
         ],
-        obj={"config": restore_config},
+        env={"SWH_CONFIG_FILENAME": restore_config_path},
         catch_exceptions=False,
         color=True,
     )
@@ -646,9 +684,10 @@ def test_cli_recovery_bundle_restore_adds_all_objects(
 
 
 def test_cli_recovery_bundle_restore_from_identity_files(
+    capture_output,
     decryption_key_recovery_tests_bundle_path,
     swh_storage,
-    restore_config,
+    restore_config_path,
     env_with_deactivated_age_yubikey_plugin_in_path,
     alabaster_identity_file_path,
     essun_identity_file_path,
@@ -656,8 +695,10 @@ def test_cli_recovery_bundle_restore_from_identity_files(
 ):
     runner = CliRunner()
     result = runner.invoke(
-        restore,
+        alter_cli_group,
         [
+            "recovery-bundle",
+            "restore",
             "--identity",
             innon_identity_file_path,
             "--identity",
@@ -666,8 +707,8 @@ def test_cli_recovery_bundle_restore_from_identity_files(
             essun_identity_file_path,
             decryption_key_recovery_tests_bundle_path,
         ],
-        env=env_with_deactivated_age_yubikey_plugin_in_path,
-        obj={"config": restore_config},
+        env=env_with_deactivated_age_yubikey_plugin_in_path
+        | {"SWH_CONFIG_FILENAME": restore_config_path},
         catch_exceptions=False,
     )
     assert result.exit_code == 0
@@ -675,10 +716,11 @@ def test_cli_recovery_bundle_restore_from_identity_files(
 
 
 def test_cli_recovery_bundle_restore_from_yubikeys(
+    capture_output,
     mocker,
     decryption_key_recovery_tests_bundle_path,
     swh_storage,
-    restore_config,
+    restore_config_path,
     env_with_deactivated_age_yubikey_plugin_in_path,
     alabaster_identity_file_path,
     essun_identity_file_path,
@@ -690,14 +732,17 @@ def test_cli_recovery_bundle_restore_from_yubikeys(
         wraps=fake_list_yubikey_identities,
     )
     mocker.patch("swh.alter.recovery_bundle.age_decrypt", wraps=fake_age_decrypt)
+
     runner = CliRunner()
     result = runner.invoke(
-        restore,
+        alter_cli_group,
         [
+            "recovery-bundle",
+            "restore",
             decryption_key_recovery_tests_bundle_path,
         ],
-        env=env_with_deactivated_age_yubikey_plugin_in_path,
-        obj={"config": restore_config},
+        env=env_with_deactivated_age_yubikey_plugin_in_path
+        | {"SWH_CONFIG_FILENAME": restore_config_path},
         catch_exceptions=False,
     )
     assert result.exit_code == 0

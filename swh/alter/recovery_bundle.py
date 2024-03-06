@@ -7,6 +7,7 @@ from abc import abstractmethod
 import contextlib
 from datetime import datetime, timezone
 import itertools
+import logging
 import operator
 import os
 from pathlib import Path
@@ -68,6 +69,9 @@ if RAGE_PATH is None:
     raise ImportError("`rage` not found in path")
 if RAGE_KEYGEN_PATH is None:
     raise ImportError("`rage-keygen` not found in path")
+
+
+logger = logging.getLogger(__name__)
 
 
 class _ManifestDumper(yaml.SafeDumper):
@@ -588,6 +592,18 @@ class RecoveryBundle:
             # nothing gets added.
             storage.origin_visit_add(list(self.origin_visits(origin)))
             storage.origin_visit_status_add(list(self.origin_visit_statuses(origin)))
+        logger.info(
+            "Restoration complete. Results: \n"
+            "- Content objects added: %(content:add)s\n"
+            "- Total bytes added to objstorage: %(content:add:bytes)s\n"
+            "- SkippedContent objects added: %(skipped_content:add)s\n"
+            "- Directory objects added: %(directory:add)s\n"
+            "- Revision objects added: %(revision:add)s\n"
+            "- Release objects added: %(release:add)s\n"
+            "- Snapshot objects added: %(snapshot:add)s\n"
+            "- Origin objects added: %(origin:add)s\n",
+            result
+        )
         return result
 
     def rollover(self, secret_sharing: SecretSharing):

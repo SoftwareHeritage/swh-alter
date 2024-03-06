@@ -147,9 +147,17 @@ def alter_cli_group(ctx):
     """  # noqa: B950
     from swh.core import config
 
+    from .operations import logger as operations_logger
+    from .recovery_bundle import logger as recovery_bundle_logger
+
     conf = config.load_from_envvar(default_config=DEFAULT_CONFIG)
     ctx.ensure_object(dict)
     ctx.obj["config"] = conf
+
+    for logger in (operations_logger, recovery_bundle_logger):
+        logger.propagate = False
+        logger.addHandler(ClickLoggingHandler())
+
     return ctx
 
 
@@ -229,12 +237,8 @@ def remove(
     from swh.storage import get_storage
     from swh.storage.interface import ObjectDeletionInterface
 
-    from .operations import Remover, RemoverError, logger
+    from .operations import Remover, RemoverError
     from .recovery_bundle import SecretSharing
-
-    logger.propagate = False
-    logger.addHandler(ClickLoggingHandler())
-    logger.setLevel(logging.INFO)
 
     conf = ctx.obj["config"]
 
@@ -718,24 +722,12 @@ def restore(
     bundle = RecoveryBundle(recovery_bundle, secret_key_provider)
     try:
         # XXX: we could use click.progressbar here
-        results = bundle.restore(restoration_storage)
+        bundle.restore(restoration_storage)
     except WrongDecryptionKey:
         click.echo(
             f"Wrong decryption key for this bundle ({bundle.removal_identifier})"
         )
         ctx.exit(2)
-
-    click.echo(
-        "Restoration complete. Results: \n"
-        f"- Content objects added: {results['content:add']}\n"
-        f"- Total bytes added to objstorage: {results['content:add:bytes']}\n"
-        f"- SkippedContent objects added: {results['skipped_content:add']}\n"
-        f"- Directory objects added: {results['directory:add']}\n"
-        f"- Revision objects added: {results['revision:add']}\n"
-        f"- Release objects added: {results['release:add']}\n"
-        f"- Snapshot objects added: {results['snapshot:add']}\n"
-        f"- Origin objects added: {results['origin:add']}\n"
-    )
 
 
 def _strip_rage_report(output):
