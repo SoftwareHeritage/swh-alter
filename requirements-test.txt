@@ -1,4 +1,4 @@
-pytest
+pytest >= 8.1
 swh.core[testing]
 swh.graph[testing]
 swh.storage[testing]
