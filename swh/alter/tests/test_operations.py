@@ -359,6 +359,7 @@ def test_remover_remove_fails_when_new_references_have_been_added(
 
 
 def test_remover_restore_recovery_bundle(
+    caplog,
     mocker,
     storage_with_references_from_forked_origin,  # noqa: F811
     graph_client_with_only_initial_origin,  # noqa: F811
@@ -390,7 +391,11 @@ def test_remover_restore_recovery_bundle(
         recovery_bundle_path=bundle_path,
         removal_identifier="test",
     )
-    remover.restore_recovery_bundle()
+
+    with caplog.at_level(logging.INFO):
+        remover.restore_recovery_bundle()
+    assert "3 objects restored" in caplog.text
+    assert "Something might be wrong" not in caplog.text
 
     instance.restore.assert_called_once_with(restoration_storage)
 
