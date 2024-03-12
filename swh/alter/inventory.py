@@ -11,7 +11,7 @@ This module implements the inventory stage of the
 from contextlib import suppress
 import itertools
 import logging
-from typing import Any, Callable, Collection, Dict, Iterator, List, Set, Tuple
+from typing import Any, Callable, Collection, Dict, Iterator, List, Optional, Set, Tuple
 
 from igraph import Vertex
 
@@ -24,6 +24,7 @@ from swh.storage.algos.origin import iter_origin_visit_statuses, iter_origin_vis
 from swh.storage.algos.snapshot import snapshot_get_all_branches
 from swh.storage.interface import StorageInterface
 
+from .progressbar import ProgressBar, ProgressBarInit, no_progressbar
 from .subgraph import Subgraph
 
 logger = logging.getLogger(__name__)
@@ -354,7 +355,10 @@ _ADD_EDGES_USING_STORAGE_METHODS_PER_OBJECT_TYPE: Dict[
 
 
 def make_inventory(
-    storage, graph_client, swhids: Collection[ExtendedSWHID]
+    storage,
+    graph_client,
+    swhids: Collection[ExtendedSWHID],
+    progressbar: Optional[ProgressBarInit] = None,
 ) -> InventorySubgraph:
     """Inventory candidates for removal from the given set of SWHID.
 
@@ -365,6 +369,15 @@ def make_inventory(
     """
     subgraph = InventorySubgraph()
     lister = Lister(storage, graph_client, subgraph)
-    for swhid in swhids:
-        lister.inventory_candidates(swhid)
+    progressbar_init: ProgressBarInit = progressbar or no_progressbar
+    bar: ProgressBar[ExtendedSWHID]
+    with progressbar_init(
+        swhids,
+        label="Inventorying all reachable objects…",
+        show_percent=False,
+        show_pos=True,
+        item_show_func=lambda s: str(s) if s else "",
+    ) as bar:
+        for swhid in bar:
+            lister.inventory_candidates(swhid)
     return lister.subgraph

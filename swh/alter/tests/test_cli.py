@@ -259,9 +259,7 @@ def test_cli_remove_colored_output(
         catch_exceptions=False,
     )
     assert result.exit_code == 0
-    assert (
-        click.style("Inventorying all reachable objects…", fg="cyan") in result.output
-    )
+    assert click.style("Finding removable objects…", fg="cyan") in result.output
 
 
 def find_free_port():

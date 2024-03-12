@@ -7,8 +7,8 @@ from datetime import datetime, timedelta, timezone
 import logging
 import shutil
 import subprocess
-from unittest.mock import call
 from typing import Any, List, Set, Union
+from unittest.mock import call
 
 import pytest
 import yaml
@@ -370,6 +370,8 @@ def test_remover_restore_recovery_bundle(
     secret_sharing_conf,
     tmp_path,
 ):
+    from ..progressbar import no_progressbar
+
     bundle_path = tmp_path / "test.swh-recovery-bundle"
     mock = mocker.patch("swh.alter.operations.RecoveryBundle", autospec=True)
     instance = mock.return_value
@@ -401,7 +403,7 @@ def test_remover_restore_recovery_bundle(
     assert "3 objects restored" in caplog.text
     assert "Something might be wrong" not in caplog.text
 
-    instance.restore.assert_called_once_with(restoration_storage)
+    instance.restore.assert_called_once_with(restoration_storage, no_progressbar)
 
 
 def test_remover_restore_recovery_bundle_logs_insert_count_mismatch(

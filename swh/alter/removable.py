@@ -11,7 +11,7 @@ This module implements the marking stage of the
 from enum import Enum, auto
 from itertools import chain
 import logging
-from typing import Iterator, List, Set
+from typing import Iterator, List, Optional, Set
 
 from igraph import Vertex
 
@@ -21,6 +21,7 @@ from swh.model.swhids import ExtendedSWHID
 from swh.storage.interface import StorageInterface
 
 from .inventory import InventorySubgraph
+from .progressbar import ProgressBar, ProgressBarInit, no_progressbar
 from .subgraph import Subgraph
 
 logger = logging.getLogger(__name__)
@@ -388,13 +389,12 @@ class Marker:
         storage: StorageInterface,
         graph_client: RemoteGraphClient,
         subgraph: RemovableSubgraph,
+        progressbar: ProgressBar[Vertex],
     ):
         self._storage = storage
         self._graph_client = graph_client
         self._subgraph = subgraph
-        if logger.isEnabledFor(logging.INFO):
-            self._total_nodes = len(subgraph.vs)
-            self._marked_count = 0
+        self._progressbar = progressbar
 
     @property
     def subgraph(self):
@@ -465,6 +465,8 @@ class Marker:
                 pred["state"] != MarkingState.UNMARKED for pred in vertex.predecessors()
             ), "topological sort broken: one predecessor is still in unmarked state"
 
+            self._progressbar.update(1)
+
             if vertex["swhid"] in NEVER_REMOVABLE:
                 vertex["state"] = MarkingState.UNREMOVABLE
                 continue
@@ -481,24 +483,13 @@ class Marker:
                 if self.has_unknown_inbound_edges(vertex)
                 else MarkingState.REMOVABLE
             )
-            self.log_marking_progress()
-
-    def log_marking_progress(self):
-        if not logger.isEnabledFor(logging.INFO):
-            return
-        self._marked_count += 1
-        if self._total_nodes == self._marked_count or self._marked_count % 100 == 0:
-            logger.info(
-                "Checking inbound edges for node %s/%s",
-                self._marked_count,
-                self._total_nodes,
-            )
 
 
 def mark_removable(
     storage: StorageInterface,
     graph_client: RemoteGraphClient,
     inventory_subgraph: InventorySubgraph,
+    progressbar: Optional[ProgressBarInit] = None,
 ) -> RemovableSubgraph:
     """Find which candidates can be safely removed from the archive.
 
@@ -507,6 +498,12 @@ def mark_removable(
     candidate and see which one can be safely removed from the archive.
     """
     subgraph = RemovableSubgraph.from_inventory_subgraph(inventory_subgraph)
-    marker = Marker(storage, graph_client, subgraph)
-    marker.mark_candidates()
+    progressbar_init: ProgressBarInit = progressbar or no_progressbar
+    bar: ProgressBar[int]
+    with progressbar_init(
+        length=len(subgraph.vs),
+        label="Determining which objects can be safely removed…",
+    ) as bar:
+        marker = Marker(storage, graph_client, subgraph, bar)
+        marker.mark_candidates()
     return marker.subgraph

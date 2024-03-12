@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Dict, List, Optional, Set, cast
+from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional, Set, cast
 
 import click
 
@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from swh.model.swhids import ExtendedSWHID
 
     from .operations import Remover
+    from .progressbar import ProgressBar, V
     from .recovery_bundle import ObjectDecryptionKeyProvider, ShareDecryptionKeys
 
 
@@ -50,6 +51,32 @@ class ClickLoggingHandler(logging.Handler):
             click.secho(self.format(record), **record.style)
         else:
             click.echo(self.format(record))
+
+
+def progressbar(
+    iterable: Optional[Iterable[V]] = None,
+    length: Optional[int] = None,
+    label: Optional[str] = None,
+    show_eta: bool = True,
+    show_pos: bool = False,
+    show_percent: Optional[bool] = None,
+    item_show_func: Optional[Callable[[V], str]] = None,
+) -> ProgressBar[V]:
+    bar = click.progressbar(
+        iterable=iterable,
+        length=length,
+        label=label,
+        show_eta=show_eta,
+        show_pos=show_pos,
+        show_percent=show_percent,
+        item_show_func=item_show_func,
+    )
+    # We have to use `cast()` to renconcile the case where
+    # length is used and `click.progressbar()` returns a
+    # `ProgressBar[int]`. But in that case, iterable is not
+    # given, so V is not bound and it is safe to assume
+    # that V = int.
+    return cast("ProgressBar[V]", bar)
 
 
 DEFAULT_CONFIG = {
@@ -249,6 +276,7 @@ def get_remover(ctx: click.Context, dry_run: bool = False) -> "Remover":
         removal_storages=cast(Dict[str, ObjectDeletionInterface], removal_storages),
         removal_objstorages=cast(Dict[str, ObjStorageInterface], removal_objstorages),
         removal_journals=cast(Dict[str, KafkaJournalWriter], removal_journals),
+        progressbar=progressbar,
     )
 
 
@@ -780,8 +808,7 @@ def restore(
     secret_key_provider = get_object_decryption_key_provider(ctx)
     bundle = RecoveryBundle(recovery_bundle, secret_key_provider)
     try:
-        # XXX: we could use click.progressbar here
-        bundle.restore(restoration_storage)
+        bundle.restore(restoration_storage, progressbar)
     except WrongDecryptionKey:
         click.echo(
             f"Wrong decryption key for this bundle ({bundle.removal_identifier})"

@@ -43,6 +43,7 @@ from typing_extensions import Self
 import yaml
 
 from swh.core.api.classes import stream_results
+from swh.core.utils import grouper
 from swh.journal.serializers import kafka_to_value, value_to_kafka
 from swh.model.model import (
     BaseModel,
@@ -64,6 +65,7 @@ from swh.storage.interface import HashDict, StorageInterface
 
 from .bech32 import Encoding as Bech32Encoding
 from .bech32 import bech32_decode, bech32_encode, convert_bits
+from .progressbar import ProgressBar, ProgressBarInit, no_progressbar
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +77,7 @@ if RAGE_PATH is None:
 if RAGE_KEYGEN_PATH is None:
     raise ImportError("`rage-keygen` not found in path")
 
+RECOVERY_BUNDLE_RESTORE_CHUNK_SIZE = 200
 
 logger = logging.getLogger(__name__)
 
@@ -589,27 +592,48 @@ class RecoveryBundle:
             lambda name: name.startswith(basename),
         )
 
-    def restore(self, storage: StorageInterface) -> Dict[str, int]:
-        result: collections.defaultdict[str, int] = collections.defaultdict(int)
-        result.update(storage.content_add(list(self.contents())))
-        result.update(storage.skipped_content_add(list(self.skipped_contents())))
-        result.update(storage.directory_add(list(self.directories())))
-        result.update(storage.revision_add(list(self.revisions())))
-        result.update(storage.release_add(list(self.releases())))
-        result.update(storage.snapshot_add(list(self.snapshots())))
-        origins = list(self.origins())
-        result.update(storage.origin_add(origins))
-        for origin in origins:
-            # Interestingly enough, origin_visit_add() and origin_visit_status_add()
-            # do not return result info.
-            # Also you _do_ need to pass a list and not an iterator otherwise
-            # nothing gets added.
-            origin_visits = list(self.origin_visits(origin))
-            storage.origin_visit_add(origin_visits)
-            result["origin_visit:add"] += len(origin_visits)
-            origin_visit_statuses = list(self.origin_visit_statuses(origin))
-            storage.origin_visit_status_add(origin_visit_statuses)
-            result["origin_visit_status:add"] += len(origin_visit_statuses)
+    def restore(
+        self, storage: StorageInterface, progressbar: ProgressBarInit = no_progressbar
+    ) -> Dict[str, int]:
+        def _origin_add(origins: List[Origin]) -> Dict[str, int]:
+            origin_result: collections.Counter[str] = collections.Counter()
+            origin_result += storage.origin_add(origins)
+            for origin in origins:
+                # Interestingly enough, origin_visit_add() and origin_visit_status_add()
+                # do not return result info.
+                # Also you _do_ need to pass a list and not an iterator otherwise
+                # nothing gets added.
+                origin_visits = list(self.origin_visits(origin))
+                storage.origin_visit_add(origin_visits)
+                origin_result["origin_visit:add"] += len(origin_visits)
+                origin_visit_statuses = list(self.origin_visit_statuses(origin))
+                storage.origin_visit_status_add(origin_visit_statuses)
+                origin_result["origin_visit_status:add"] += len(origin_visit_statuses)
+            return dict(origin_result)
+
+        STEPS: List[
+            Tuple[Callable[[List[Any]], Dict[str, int]], Callable[[], Iterator[Any]]]
+        ] = [
+            (storage.content_add, self.contents),
+            (storage.skipped_content_add, self.skipped_contents),
+            (storage.directory_add, self.directories),
+            (storage.revision_add, self.revisions),
+            (storage.release_add, self.releases),
+            (storage.snapshot_add, self.snapshots),
+            (_origin_add, self.origins),
+        ]
+
+        result: collections.Counter[str] = collections.Counter()
+        bar: ProgressBar[int]
+        with progressbar(
+            length=len(self.swhids), label="Restoring recovery bundle…"
+        ) as bar:
+            for add, source in STEPS:
+                for chunk_it in grouper(source(), RECOVERY_BUNDLE_RESTORE_CHUNK_SIZE):
+                    chunk = list(chunk_it)
+                    result += add(chunk)
+                    bar.update(n_steps=len(chunk))
+
         logger.info(
             "Restoration complete. Results: \n"
             "- Content objects added: %(content:add)s\n"
@@ -624,7 +648,7 @@ class RecoveryBundle:
             "- OriginVisitStatus objects added: %(origin_visit_status:add)s\n",
             result,
         )
-        return result
+        return dict(result)
 
     def rollover(self, secret_sharing: SecretSharing):
         """Update the recovery bundle encrypted shared secrets using the given
@@ -941,7 +965,7 @@ class RecoveryBundleCreator:
                     self._add_origin_visit_status(basename, origin_visit_status)
                     self._registration_callback(origin_visit_status)
 
-    def backup_swhids(self, swhids: Iterable[ExtendedSWHID]):
+    def backup_swhids(self, swhids: Iterable[ExtendedSWHID]) -> int:
         # groupby() splits consecutive groups, so we need to order the list first
         def key(swhid: ExtendedSWHID) -> int:
             return _OBJECT_TYPE_ORDERING[swhid.object_type]
@@ -952,6 +976,7 @@ class RecoveryBundleCreator:
         ):
             _ADD_OBJECTS_METHODS[object_type](self, list(grouped_swhids))
         self._manifest.swhids.extend([str(swhid) for swhid in sorted_swhids])
+        return len(sorted_swhids)
 
 
 _ADD_OBJECTS_METHODS: Dict[

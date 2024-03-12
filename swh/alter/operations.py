@@ -7,8 +7,9 @@ import collections
 from datetime import datetime
 import itertools
 import logging
-from typing import Dict, List, Optional, TextIO, Union, cast
+from typing import Dict, List, Optional, TextIO, Tuple, Union, cast
 
+from swh.core.utils import grouper
 from swh.graph.http_client import RemoteGraphClient
 from swh.journal.writer.kafka import KafkaJournalWriter
 from swh.model.model import Content, KeyType, Origin
@@ -23,6 +24,7 @@ from swh.search.interface import SearchInterface
 from swh.storage.interface import ObjectDeletionInterface, StorageInterface
 
 from .inventory import make_inventory
+from .progressbar import ProgressBar, ProgressBarInit, no_progressbar
 from .recovery_bundle import (
     AgeSecretKey,
     HasSwhid,
@@ -46,6 +48,10 @@ def _secho(msg, **kwargs):
     logger.info(msg, extra={"style": kwargs})
 
 
+STORAGE_OBJECT_DELETE_CHUNK_SIZE = 200
+RECOVERY_BUNDLE_BACKUP_SWHIDS_CHUNK_SIZE = 200
+
+
 class Remover:
     """Helper class used to perform a removal."""
 
@@ -59,6 +65,7 @@ class Remover:
         removal_storages: Optional[Dict[str, ObjectDeletionInterface]] = None,
         removal_objstorages: Optional[Dict[str, ObjStorageInterface]] = None,
         removal_journals: Optional[Dict[str, KafkaJournalWriter]] = None,
+        progressbar: Optional[ProgressBarInit] = None,
     ):
         self.storage = storage
         self.graph_client = graph_client
@@ -75,6 +82,9 @@ class Remover:
         self.journal_objects_to_remove: Dict[
             str, List[KeyType]
         ] = collections.defaultdict(list)
+        self.progressbar: ProgressBarInit = (
+            progressbar if progressbar is not None else no_progressbar
+        )
 
     def get_removable(
         self,
@@ -87,14 +97,15 @@ class Remover:
         _secho("Removing the following origins:")
         for swhid in swhids:
             _secho(f" - {swhid}")
-        _secho("Inventorying all reachable objects…", fg="cyan")
-        inventory_subgraph = make_inventory(self.storage, self.graph_client, swhids)
+        _secho("Finding removable objects…", fg="cyan")
+        inventory_subgraph = make_inventory(
+            self.storage, self.graph_client, swhids, self.progressbar
+        )
         if output_inventory_subgraph:
             inventory_subgraph.write_dot(output_inventory_subgraph)
             output_inventory_subgraph.close()
-        _secho("Determining which objects can be safely removed…", fg="cyan")
         removable_subgraph = mark_removable(
-            self.storage, self.graph_client, inventory_subgraph
+            self.storage, self.graph_client, inventory_subgraph, self.progressbar
         )
         if output_removable_subgraph:
             removable_subgraph.write_dot(output_removable_subgraph)
@@ -146,21 +157,28 @@ class Remover:
         self.recovery_bundle_path = recovery_bundle_path
         self.object_secret_key = object_secret_key
 
-        for obj in itertools.chain(
+        iterchain = itertools.chain(
             bundle.contents(),
             bundle.skipped_contents(),
             bundle.directories(),
             bundle.revisions(),
             bundle.releases(),
             bundle.snapshots(),
-        ):
-            self.register_object(cast(Union[HasSwhid, HasUniqueKey], obj))
-        for origin in bundle.origins():
-            self.register_object(origin)
-            for obj in itertools.chain(
-                bundle.origin_visits(origin), bundle.origin_visit_statuses(origin)
-            ):
+        )
+        bar: ProgressBar[int]
+        with self.progressbar(
+            length=len(bundle.swhids), label="Loading objects…"
+        ) as bar:
+            for obj in iterchain:
                 self.register_object(cast(Union[HasSwhid, HasUniqueKey], obj))
+                bar.update(n_steps=1)
+            for origin in bundle.origins():
+                self.register_object(origin)
+                for obj in itertools.chain(
+                    bundle.origin_visits(origin), bundle.origin_visit_statuses(origin)
+                ):
+                    self.register_object(cast(Union[HasSwhid, HasUniqueKey], obj))
+                bar.update(n_steps=1)
 
     def create_recovery_bundle(
         self,
@@ -192,7 +210,15 @@ class Remover:
                     creator.set_expire(expire)
                 except ValueError as ex:
                     raise RemoverError(f"Unable to set expiration date: {str(ex)}")
-            creator.backup_swhids(removable_swhids)
+            bar: ProgressBar[int]
+            with self.progressbar(
+                length=len(removable_swhids), label="Backing up objects…"
+            ) as bar:
+                for chunk in grouper(
+                    removable_swhids, RECOVERY_BUNDLE_BACKUP_SWHIDS_CHUNK_SIZE
+                ):
+                    swhid_count = creator.backup_swhids(chunk)
+                    bar.update(n_steps=swhid_count)
         self.recovery_bundle_path = recovery_bundle_path
         _secho("Recovery bundle created.", fg="green")
         return self.object_secret_key
@@ -205,9 +231,8 @@ class Remover:
             assert self.object_secret_key
             return self.object_secret_key
 
-        _secho("Restoring recovery bundle…", fg="cyan")
         bundle = RecoveryBundle(self.recovery_bundle_path, key_provider)
-        result = bundle.restore(self.restoration_storage)
+        result = bundle.restore(self.restoration_storage, self.progressbar)
         # We care about the number of objects, not the byte count
         result.pop("content:add:bytes", None)
         total = sum(result.values())
@@ -223,53 +248,78 @@ class Remover:
                 bold=True,
             )
 
-    def remove(self) -> None:
+    def remove(self, progressbar=None) -> None:
         for name, removal_search in self.removal_searches.items():
             self.remove_from_search(name, removal_search)
-
         for name, removal_storage in self.removal_storages.items():
-            _secho(f"Removing objects from storage “{name}”…", fg="cyan")
-            result = removal_storage.object_delete(self.swhids_to_remove)
-            _secho(
-                f"{sum(result.values())} objects removed from storage “{name}”.",
-                fg="green",
-            )
-
+            self.remove_from_storage(name, removal_storage)
         for name, journal_writer in self.removal_journals.items():
-            _secho(f"Removing objects from journal “{name}”…", fg="cyan")
-            for object_type, keys in self.journal_objects_to_remove.items():
-                journal_writer.delete(object_type, keys)
-            journal_writer.flush()
-            _secho(f"Objects removed from journal “{name}”.", fg="green")
-
+            self.remove_from_journal(name, journal_writer)
         for name, removal_objstorage in self.removal_objstorages.items():
             self.remove_from_objstorage(name, removal_objstorage)
-
         if self.have_new_references(self.swhids_to_remove):
             raise RemoverError("New references have been added to removed objects")
 
+    def remove_from_storage(
+        self, name: str, removal_storage: ObjectDeletionInterface
+    ) -> None:
+        results: collections.Counter[str] = collections.Counter()
+        bar: ProgressBar[int]
+        with self.progressbar(
+            length=len(self.swhids_to_remove),
+            label=f"Removing objects from storage “{name}”…",
+        ) as bar:
+            for chunk_it in grouper(
+                self.swhids_to_remove, STORAGE_OBJECT_DELETE_CHUNK_SIZE
+            ):
+                chunk_swhids = list(chunk_it)
+                results += removal_storage.object_delete(chunk_swhids)
+                bar.update(n_steps=len(chunk_swhids))
+        _secho(
+            f"{results.total()} objects removed from storage “{name}”.",
+            fg="green",
+        )
+
+    def remove_from_journal(
+        self, name: str, journal_writer: KafkaJournalWriter
+    ) -> None:
+        bar: ProgressBar[Tuple[str, List[KeyType]]]
+        with self.progressbar(
+            self.journal_objects_to_remove.items(),
+            label=f"Removing objects from journal “{name}”…",
+        ) as bar:
+            for object_type, keys in bar:
+                journal_writer.delete(object_type, keys)
+        journal_writer.flush()
+        _secho(f"Objects removed from journal “{name}”.", fg="green")
+
     def remove_from_search(self, name: str, search: SearchInterface) -> None:
-        _secho(f"Removing origins from search “{name}”…", fg="cyan")
         count = 0
-        for origin_url in self.origin_urls_to_remove:
-            deleted = search.origin_delete(origin_url)
-            count += 1 if deleted else 0
-        search.flush()
+        with self.progressbar(
+            self.origin_urls_to_remove, label=f"Removing origins from search “{name}”…"
+        ) as bar:
+            for origin_url in bar:
+                deleted = search.origin_delete(origin_url)
+                count += 1 if deleted else 0
+            search.flush()
         _secho(f"{count} origins removed from search “{name}”.", fg="green")
 
     def remove_from_objstorage(
         self, name: str, objstorage: ObjStorageInterface
     ) -> None:
-        _secho(f"Removing objects from objstorage “{name}”…", fg="cyan")
         count = 0
-        for objid in self.objids_to_remove:
-            try:
-                objstorage.delete(objid)
-                count += 1
-            except ObjNotFoundError:
-                _secho(
-                    f"{objid} not found in objstorage “{name}” for deletion", fg="red"
-                )
+        with self.progressbar(
+            self.objids_to_remove, label=f"Removing objects from objstorage “{name}”…"
+        ) as bar:
+            for objid in bar:
+                try:
+                    objstorage.delete(objid)
+                    count += 1
+                except ObjNotFoundError:
+                    _secho(
+                        f"{objid} not found in objstorage “{name}” for deletion",
+                        fg="red",
+                    )
         _secho(f"{count} objects removed from objstorage “{name}”.", fg="green")
 
     def have_new_references(self, removed_swhids: List[ExtendedSWHID]) -> bool:
@@ -277,12 +327,15 @@ class Remover:
         an object outside the set of removed objects."""
 
         swhids = set(removed_swhids)
-        for swhid in swhids:
-            if swhid.object_type == ExtendedObjectType.ORIGIN:
-                continue
-            recent_references = self.storage.object_find_recent_references(
-                swhid, 9_999_999
-            )
-            if not swhids.issuperset(set(recent_references)):
-                return True
+        with self.progressbar(
+            swhids, label="Looking for newly added references…"
+        ) as bar:
+            for swhid in bar:
+                if swhid.object_type == ExtendedObjectType.ORIGIN:
+                    continue
+                recent_references = self.storage.object_find_recent_references(
+                    swhid, 9_999_999
+                )
+                if not swhids.issuperset(set(recent_references)):
+                    return True
         return False
