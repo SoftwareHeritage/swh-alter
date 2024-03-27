@@ -441,7 +441,9 @@ class Marker:
     ) -> Iterator[str]:
         try:
             yield from self._graph_client.neighbors(
-                str(vertex["swhid"]), direction="backward", max_edges=search_limit
+                str(vertex["swhid"]),
+                direction="backward",
+                max_matching_nodes=search_limit,
             )
         except GraphArgumentException:
             yield from ()
