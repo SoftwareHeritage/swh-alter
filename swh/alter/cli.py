@@ -35,7 +35,7 @@ class SwhidOrUrlParamType(click.ParamType):
             except ValidationError:
                 self.fail(f"expected extended SWHID, got {value!r}", param, ctx)
         else:
-            click.secho(f"Assuming {value} is an origin URL.", fg="cyan")
+            click.secho(f"Assuming {value} is an origin URL.", fg="cyan", err=True)
             sha1 = hashlib.sha1(value.encode("utf-8")).hexdigest()
             swhid = ExtendedSWHID.from_string(f"swh:1:ori:{sha1}")
             return swhid
@@ -376,6 +376,55 @@ def remove(
         click.secho(str(e), err=True, fg="red", bold=True)
         remover.restore_recovery_bundle()
         ctx.exit(1)
+
+
+@alter_cli_group.command("list-candidates")
+@click.option(
+    "--omit-referenced/--no-omit-referenced",
+    default=True,
+    help="Omit candidates that are referenced by other objects",
+)
+@click.argument(
+    "swhids",
+    metavar="<SWHID|URL>..",
+    type=SwhidOrUrlParamType(),
+    required=True,
+    nargs=-1,
+)
+@click.pass_context
+def list_candidates(
+    ctx: click.Context, swhids: List["ExtendedSWHID"], omit_referenced: bool
+):
+    """List candidates for an altering operation (e.g. removal)
+
+    Display a list of SWHIDs of objects that would be affected by an altering
+    operation targeting the SWHIDs (or origin URLs) given as arguments.
+
+    Candidates referenced by objects in the graph outside the set of candidates
+    will be filtered out, unless `--no-omit-referenced` is given.
+    """
+
+    from swh.graph.http_client import GraphAPIError, RemoteGraphClient
+    from swh.storage import get_storage
+
+    from .inventory import make_inventory
+    from .removable import mark_removable
+
+    conf = ctx.obj["config"]
+
+    try:
+        graph_client = RemoteGraphClient(**conf["graph"])
+    except GraphAPIError as e:
+        raise click.ClickException(f"Unable to connect to the graph server: {e.args}")
+
+    storage = get_storage(**conf["storage"])
+
+    subgraph = make_inventory(storage, graph_client, swhids)
+    if omit_referenced:
+        subgraph = mark_removable(storage, graph_client, subgraph)
+        subgraph.delete_unremovable()
+    for swhid in subgraph.swhids():
+        click.echo(swhid)
 
 
 @alter_cli_group.group(name="recovery-bundle", context_settings=CONTEXT_SETTINGS)

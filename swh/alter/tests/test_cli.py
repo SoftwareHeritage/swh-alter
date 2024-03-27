@@ -22,6 +22,7 @@ from ..cli import (
     alter_cli_group,
     extract_content,
     info,
+    list_candidates,
     recover_decryption_key,
     remove,
     restore,
@@ -509,6 +510,97 @@ def test_cli_remove_restores_bundle_when_remove_fails(
     )
     assert result.exit_code == 1
     remover.restore_recovery_bundle.assert_called_once()
+
+
+def test_cli_list_candidates_omit_referenced(mocked_external_resources, remove_config):
+    runner = CliRunner(mix_stderr=False)
+    result = runner.invoke(
+        list_candidates,
+        ["swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165"],
+        obj={"config": remove_config},
+    )
+    assert result.exit_code == 0
+    assert set(result.stdout.splitlines()) == {
+        line.strip()
+        for line in """\
+        swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165
+        swh:1:snp:0000000000000000000000000000000000000022
+        swh:1:rel:0000000000000000000000000000000000000021
+        swh:1:rev:0000000000000000000000000000000000000018
+        swh:1:dir:0000000000000000000000000000000000000017
+        swh:1:dir:0000000000000000000000000000000000000016
+        swh:1:cnt:0000000000000000000000000000000000000015
+        swh:1:cnt:0000000000000000000000000000000000000014
+        swh:1:rev:0000000000000000000000000000000000000013
+        swh:1:dir:0000000000000000000000000000000000000012
+        swh:1:cnt:0000000000000000000000000000000000000011
+        """.rstrip().splitlines()
+    }
+
+
+def test_cli_list_candidates_no_omit_referenced(
+    mocked_external_resources, remove_config
+):
+    runner = CliRunner(mix_stderr=False)
+    result = runner.invoke(
+        list_candidates,
+        ["--no-omit-referenced", "https://example.com/swh/graph2"],
+        obj={"config": remove_config},
+    )
+    assert result.exit_code == 0
+    assert set(result.stdout.splitlines()) == {
+        line.strip()
+        for line in """\
+        swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165
+        swh:1:snp:0000000000000000000000000000000000000022
+        swh:1:rel:0000000000000000000000000000000000000021
+        swh:1:rev:0000000000000000000000000000000000000018
+        swh:1:dir:0000000000000000000000000000000000000017
+        swh:1:dir:0000000000000000000000000000000000000016
+        swh:1:cnt:0000000000000000000000000000000000000015
+        swh:1:cnt:0000000000000000000000000000000000000014
+        swh:1:rev:0000000000000000000000000000000000000013
+        swh:1:dir:0000000000000000000000000000000000000012
+        swh:1:cnt:0000000000000000000000000000000000000011
+        swh:1:rel:0000000000000000000000000000000000000010
+        swh:1:rev:0000000000000000000000000000000000000009
+        swh:1:dir:0000000000000000000000000000000000000008
+        swh:1:cnt:0000000000000000000000000000000000000007
+        swh:1:dir:0000000000000000000000000000000000000006
+        swh:1:cnt:0000000000000000000000000000000000000005
+        swh:1:cnt:0000000000000000000000000000000000000004
+        swh:1:rev:0000000000000000000000000000000000000003
+        swh:1:dir:0000000000000000000000000000000000000002
+        swh:1:cnt:0000000000000000000000000000000000000001
+        """.rstrip().splitlines()
+    }
+
+
+def test_cli_list_candidates_multiple_swhids(mocked_external_resources, remove_config):
+    runner = CliRunner(mix_stderr=False)
+    result = runner.invoke(
+        list_candidates,
+        [
+            "--no-omit-referenced",
+            "swh:1:dir:0000000000000000000000000000000000000008",
+            "swh:1:rev:0000000000000000000000000000000000000003",
+        ],
+        obj={"config": remove_config},
+    )
+    assert result.exit_code == 0, result.output
+    assert set(result.stdout.splitlines()) == {
+        line.strip()
+        for line in """\
+        swh:1:dir:0000000000000000000000000000000000000008
+        swh:1:cnt:0000000000000000000000000000000000000007
+        swh:1:dir:0000000000000000000000000000000000000006
+        swh:1:cnt:0000000000000000000000000000000000000005
+        swh:1:cnt:0000000000000000000000000000000000000004
+        swh:1:dir:0000000000000000000000000000000000000002
+        swh:1:rev:0000000000000000000000000000000000000003
+        swh:1:cnt:0000000000000000000000000000000000000001
+        """.rstrip().splitlines()
+    }
 
 
 def test_cli_recovery_bundle_resume_removal_restores_bundle_when_remove_fails(
