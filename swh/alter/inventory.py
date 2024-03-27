@@ -210,7 +210,12 @@ class Lister:
         # We limit the search to not retrieve too much at once from storage.
         # We will have to retrieve the oldest parent revisions if needed in any cases.
         for rev_d in self._storage.revision_log([source.object_id], limit=100):
-            revision = Revision.from_dict(rev_d)
+            if isinstance(rev_d, Revision):
+                revision = rev_d
+            else:
+                # TODO: remove this conditional once swh-storage fully migrated to
+                # returning revision objects instead of dicts
+                revision = Revision.from_dict(rev_d)
             revision_swhid = revision.swhid().to_extended()
             # We might know about this revision already from a previous revision log.
             # In that case there is no need to go any further up the log.
