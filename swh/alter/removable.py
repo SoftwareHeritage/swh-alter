@@ -427,8 +427,12 @@ class Marker:
                     vertex["swhid"],
                 )
                 return False
-            logger.debug("Is %s an extra predecessor of %s?", pred, vertex["swhid"])
             if pred not in known_predecessors:
+                logger.debug(
+                    "%s has an extra predecessor (%s), skipping removal",
+                    vertex["swhid"],
+                    pred,
+                )
                 return True
         return False
 
