@@ -155,7 +155,7 @@ class Lister:
             # Anything pointed by origins are known to be complete if they were
             # present at times the swh.graph export was made.
             v_dst = self._subgraph.add_swhid(dst, complete=True)
-            self._subgraph.add_edge(v_src, v_dst)
+            self._subgraph.add_edge(v_src, v_dst, skip_duplicates=True)
 
     def add_edges_using_storage(self, source: ExtendedSWHID) -> None:
         _ADD_EDGES_USING_STORAGE_METHODS_PER_OBJECT_TYPE[source.object_type](
