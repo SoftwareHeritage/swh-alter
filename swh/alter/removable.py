@@ -422,7 +422,7 @@ class Marker:
                 "swh:1:dir:"
             ):
                 logger.info(
-                    "Skipping predecessor %s of %s as its a submodule",
+                    "Skipping predecessor %s of %s as it's a submodule",
                     pred,
                     vertex["swhid"],
                 )
