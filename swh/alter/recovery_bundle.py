@@ -13,6 +13,7 @@ import operator
 import os
 from pathlib import Path
 import re
+import shlex
 import shutil
 import subprocess
 import tempfile
@@ -27,6 +28,7 @@ from typing import (
     List,
     Optional,
     Protocol,
+    Sequence,
     Set,
     TextIO,
     Tuple,
@@ -63,6 +65,8 @@ from swh.storage.interface import HashDict, StorageInterface
 from .bech32 import Encoding as Bech32Encoding
 from .bech32 import bech32_decode, bech32_encode, convert_bits
 
+logger = logging.getLogger(__name__)
+
 RAGE_PATH = shutil.which("rage")
 RAGE_KEYGEN_PATH = shutil.which("rage-keygen")
 
@@ -94,6 +98,19 @@ class _ManifestDumper(yaml.SafeDumper):
 
     def _represent_swhid(self, dumper, data):
         return dumper.represent_scalar("tag:yaml.org,2002:str", str(data), style="")
+
+
+def check_call(command: Sequence[str], **kwargs) -> subprocess.CompletedProcess:
+    try:
+        return subprocess.run(command, capture_output=True, check=True, **kwargs)
+    except subprocess.CalledProcessError as e:
+        logger.warning(
+            "Command `%s` failed with exit code %s", shlex.join(command), e.returncode
+        )
+        for line in e.stderr.strip().splitlines():
+            logger.warning(" stderr: %s", line.strip())
+
+        raise e
 
 
 @attrs.define
@@ -169,7 +186,7 @@ def age_encrypt(
     if armored_output:
         cmdline.append("--armor")
     cmdline.extend(["--output", "-", "-"])
-    age_proc = subprocess.run(cmdline, input=cleartext, capture_output=True, check=True)
+    age_proc = check_call(cmdline, input=cleartext)
     return age_proc.stdout
 
 
@@ -221,9 +238,7 @@ def generate_age_keypair() -> Tuple[AgePublicKey, AgeSecretKey]:
     # Make mypy happy
     assert RAGE_KEYGEN_PATH is not None
     cmdline = [RAGE_KEYGEN_PATH]
-    rage_keygen_proc = subprocess.run(
-        cmdline, capture_output=True, check=True, text=True
-    )
+    rage_keygen_proc = check_call(cmdline, text=True)
     public_key_matches = re.search(
         r"^# public key: (age1.*)$", rage_keygen_proc.stdout, re.MULTILINE
     )
@@ -242,9 +257,7 @@ def list_yubikey_identities() -> List[Tuple[ShareIdentifier, AgeSecretKey]]:
     if age_plugin_yubikey_path is None:
         raise FileNotFoundError("`age-plugin-yubikey` not found in path")
     cmdline = [age_plugin_yubikey_path, "--identity"]
-    age_plugin_yubikey_proc = subprocess.run(
-        cmdline, capture_output=True, check=True, text=True
-    )
+    age_plugin_yubikey_proc = check_call(cmdline, text=True)
     # Split on empty lines
     descriptions = age_plugin_yubikey_proc.stdout.split("\n\n")
     identities = []
