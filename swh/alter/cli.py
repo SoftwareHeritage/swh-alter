@@ -16,6 +16,7 @@ from swh.core.cli import swh as swh_cli_group
 if TYPE_CHECKING:
     from swh.model.swhids import ExtendedSWHID
 
+    from .operations import Remover
     from .recovery_bundle import ObjectDecryptionKeyProvider, ShareDecryptionKeys
 
 
@@ -161,71 +162,7 @@ def alter_cli_group(ctx):
     return ctx
 
 
-@alter_cli_group.command()
-@click.option(
-    "--dry-run",
-    type=click.Choice(
-        ["stop-before-recovery-bundle", "stop-before-removal"], case_sensitive=False
-    ),
-    help="perform a trial run",
-)
-@click.option(
-    "--output-inventory-subgraph",
-    type=click.File(mode="w", atomic=True),
-)
-@click.option(
-    "--output-removable-subgraph",
-    type=click.File(mode="w", atomic=True),
-)
-@click.option(
-    "--output-pruned-removable-subgraph",
-    type=click.File(mode="w", atomic=True),
-)
-@click.option(
-    "--identifier",
-    metavar="IDENTIFIER",
-    required=True,
-    help="identifier for this removal operation",
-)
-@click.option(
-    "--reason",
-    metavar="REASON",
-    help="reason for this removal operation",
-)
-@click.option(
-    "--expire",
-    metavar="YYYY-MM-DD",
-    type=click.DateTime(formats=["%Y-%m-%d"]),
-    help="date when the recovery bundle should be removed",
-)
-@click.option(
-    "--recovery-bundle",
-    metavar="PATH",
-    type=click.Path(writable=True, dir_okay=False),
-    required=True,
-    help="path to the recovery bundle that will be created",
-)
-@click.argument(
-    "swhids",
-    metavar="<SWHID|URL>..",
-    type=SwhidOrUrlParamType(),
-    required=True,
-    nargs=-1,
-)
-@click.pass_context
-def remove(
-    ctx,
-    swhids: List["ExtendedSWHID"],
-    dry_run: bool,
-    output_inventory_subgraph,
-    output_removable_subgraph,
-    output_pruned_removable_subgraph,
-    identifier,
-    reason,
-    expire,
-    recovery_bundle,
-) -> None:
-    """Remove the given SWHIDs or URLs from the archive."""
+def get_remover(ctx: click.Context, dry_run: bool = False) -> "Remover":
     from swh.core.api import RemoteException
     from swh.graph.http_client import GraphAPIError, RemoteGraphClient
     from swh.journal.writer import get_journal_writer
@@ -237,8 +174,7 @@ def remove(
     from swh.storage import get_storage
     from swh.storage.interface import ObjectDeletionInterface
 
-    from .operations import Remover, RemoverError
-    from .recovery_bundle import SecretSharing
+    from .operations import Remover
 
     conf = ctx.obj["config"]
 
@@ -305,14 +241,7 @@ def remove(
         ), "journal writer is not kafka-based"
         removal_journals[name] = journal_writer
 
-    try:
-        secret_sharing = SecretSharing.from_dict(
-            conf["recovery_bundles"]["secret_sharing"]
-        )
-    except ValueError as e:
-        raise click.ClickException(f"Wrong secret sharing configuration: {e.args[0]}")
-
-    remover = Remover(
+    return Remover(
         storage=storage,
         graph_client=graph_client,
         restoration_storage=restoration_storage,
@@ -321,6 +250,86 @@ def remove(
         removal_objstorages=cast(Dict[str, ObjStorageInterface], removal_objstorages),
         removal_journals=cast(Dict[str, KafkaJournalWriter], removal_journals),
     )
+
+
+@alter_cli_group.command()
+@click.option(
+    "--dry-run",
+    type=click.Choice(
+        ["stop-before-recovery-bundle", "stop-before-removal"], case_sensitive=False
+    ),
+    help="perform a trial run",
+)
+@click.option(
+    "--output-inventory-subgraph",
+    type=click.File(mode="w", atomic=True),
+)
+@click.option(
+    "--output-removable-subgraph",
+    type=click.File(mode="w", atomic=True),
+)
+@click.option(
+    "--output-pruned-removable-subgraph",
+    type=click.File(mode="w", atomic=True),
+)
+@click.option(
+    "--identifier",
+    metavar="IDENTIFIER",
+    required=True,
+    help="identifier for this removal operation",
+)
+@click.option(
+    "--reason",
+    metavar="REASON",
+    help="reason for this removal operation",
+)
+@click.option(
+    "--expire",
+    metavar="YYYY-MM-DD",
+    type=click.DateTime(formats=["%Y-%m-%d"]),
+    help="date when the recovery bundle should be removed",
+)
+@click.option(
+    "--recovery-bundle",
+    metavar="PATH",
+    type=click.Path(writable=True, dir_okay=False),
+    required=True,
+    help="path to the recovery bundle that will be created",
+)
+@click.argument(
+    "swhids",
+    metavar="<SWHID|URL>..",
+    type=SwhidOrUrlParamType(),
+    required=True,
+    nargs=-1,
+)
+@click.pass_context
+def remove(
+    ctx,
+    swhids: List["ExtendedSWHID"],
+    dry_run: bool,
+    output_inventory_subgraph,
+    output_removable_subgraph,
+    output_pruned_removable_subgraph,
+    identifier,
+    reason,
+    expire,
+    recovery_bundle,
+) -> None:
+    """Remove the given SWHIDs or URLs from the archive."""
+
+    from .operations import RemoverError
+    from .recovery_bundle import SecretSharing
+
+    try:
+        secret_sharing = SecretSharing.from_dict(
+            ctx.obj["config"]["recovery_bundles"]["secret_sharing"]
+        )
+    except ValueError as e:
+        raise click.ClickException(f"Wrong secret sharing configuration: {e.args[0]}")
+
+    remover = get_remover(ctx, dry_run)
+
     try:
         removable_swhids = remover.get_removable(
             swhids,
