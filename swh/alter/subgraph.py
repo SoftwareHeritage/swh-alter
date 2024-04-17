@@ -181,14 +181,20 @@ class Subgraph(Graph):
         # This will also log edge insertion in the graph, making for a very
         # verbose output. It should only be useful if you get the
         # “duplicate edge” above.
-        if False:
+        if self._DEBUG_EDGE_INSERTION:
             import inspect
+
+            current_frame = inspect.currentframe()
+            if current_frame and current_frame.f_back:
+                caller = inspect.getframeinfo(current_frame.f_back)[2]
+            else:
+                caller = "<unknown>"
 
             logger.debug(
                 "Inserting edge %s → %s, added from %s",
                 src["name"],
                 dst["name"],
-                inspect.getframeinfo(inspect.currentframe().f_back)[2].strip(),
+                caller,
             )
         super().add_edge(src, dst, **kwargs)
 
