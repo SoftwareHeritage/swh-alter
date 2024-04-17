@@ -4,7 +4,7 @@
 # See top-level LICENSE file for more information
 
 import logging
-from typing import Any, Dict, List, TextIO
+from typing import Any, Dict, Iterable, List, TextIO
 
 from igraph import Graph, Vertex
 
@@ -105,6 +105,30 @@ class Subgraph(Graph):
             for k, v in type(self).default_vertex_attributes.items():
                 kwargs[k] = kwargs.get(k, v)
             return super().add_vertex(name, source=set(), **kwargs)
+
+    def add_swhids(self, swhids: Iterable[str]) -> Dict[str, int]:
+        """Add a set of swhids to the subgraph.
+
+        Arguments:
+          swhids: a Set of SWHIDs.
+
+        Returns: a mapping between added SWHID strings and the corresponding vertex index
+        """
+        swhid_list = list(swhids)
+
+        super().add_vertices(
+            n=len(swhid_list),
+            attributes={
+                **{
+                    k: [v] * len(swhid_list)
+                    for k, v in type(self).default_vertex_attributes.items()
+                },
+                "name": swhid_list,
+                "swhid": [ExtendedSWHID.from_string(swhid) for swhid in swhid_list],
+            },
+        )
+
+        return {v["name"]: v.index for v in self.vs.select(name_in=swhids)}
 
     def add_swhid(self, object_or_swhid, **kwargs) -> Vertex:
         """Add or update a vertex for the given SWHID or object.

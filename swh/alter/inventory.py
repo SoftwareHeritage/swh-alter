@@ -11,7 +11,7 @@ This module implements the inventory stage of the
 from contextlib import suppress
 import itertools
 import logging
-from typing import Any, Callable, Collection, Dict, Iterator, List
+from typing import Any, Callable, Collection, Dict, Iterator, List, Set, Tuple
 
 from igraph import Vertex
 
@@ -99,7 +99,7 @@ class Lister:
         logger.debug("inventory_candidates: added %s", root)
         for remaining in self._iter_inventory_candidates():
             logger.debug(
-                "inventory_candidates: %4d SWIDS known, %4d needs to be looked up.",
+                "inventory_candidates: %4d SWHIDS known, %4d need to be looked up.",
                 len(self._subgraph.vs),
                 remaining,
             )
@@ -140,22 +140,82 @@ class Lister:
             yield len(to_fetch)
 
     def add_edges_traversing_graph(self, start: ExtendedSWHID) -> None:
+        # Mapping between SWHID string and integer vertex index
+        swhid_vertices: Dict[str, int] = {}
+
+        # SWHIDs that haven't been added yet, and whether they will be complete
+        pending_swhids: Set[str] = set()
+
+        # All SWHID -> SWHID edges seen so far
+        seen_edges: Set[Tuple[str, str]] = set()
+
+        # Edges that still need to be added
+        pending_edges: Set[Tuple[str, str]] = set()
+
+        def add_swhid(swhid):
+            """Record a swhid to be added to the subgraph"""
+            if swhid in swhid_vertices:
+                return
+
+            pending_swhids.add(swhid)
+
+        def add_edge(src, dst):
+            """Record an edge to be added to the subgraph"""
+            edge = (src, dst)
+            if edge in seen_edges:
+                return
+
+            add_swhid(src)
+            add_swhid(dst)
+            pending_edges.add((src, dst))
+            seen_edges.add((src, dst))
+
+            # Add new edges in bulk
+            if len(pending_edges) > 10000:
+                flush_edges()
+
+        def flush_edges():
+            """Add all the pending swhids, and all pending edges, to the subgraph."""
+
+            # Check for swhids that are already in the subgraph and record them
+            # in swhid_vertices
+            found = {
+                v["name"]: v.index
+                for v in self._subgraph.vs.select(name_in=pending_swhids)
+            }
+            swhid_vertices.update(found)
+
+            # Filter the really new swhids and insert them
+            new_swhids = pending_swhids - found.keys()
+            if new_swhids:
+                added = self._subgraph.add_swhids(new_swhids)
+                swhid_vertices.update(added)
+
+            # Mark all non-origin nodes as completely visited
+            for name in pending_swhids:
+                if not name.startswith("swh:1:ori:"):
+                    self._subgraph.vs[swhid_vertices[name]]["complete"] = True
+
+            pending_swhids.clear()
+
+            # Then, add the edges in bulk
+            self._subgraph.add_edges(
+                (swhid_vertices[src], swhid_vertices[dst]) for src, dst in pending_edges
+            )
+            pending_edges.clear()
+
         # We want everything except dir→rev edges which represent submodules.
         # See the relevant comment in `_add_edges_using_storage_for_directory` below.
         edge_restriction = "ori:*,snp:*,rel:*,rev:*,dir:dir,dir:cnt"
+
         # XXX: We should be able to pass a SWHID object to visit_edges()
         for src, dst in self._graph_client.visit_edges(
             str(start), edges=edge_restriction
         ):
-            # Origins are the only objects in the graph that are not identified
-            # over their content. New destinations can be added over time with
-            # new visits. Therefore, we need to always query storage for them.
-            complete = not src.startswith("swh:1:ori:")
-            v_src = self._subgraph.add_swhid(src, complete=complete)
-            # Anything pointed by origins are known to be complete if they were
-            # present at times the swh.graph export was made.
-            v_dst = self._subgraph.add_swhid(dst, complete=True)
-            self._subgraph.add_edge(v_src, v_dst, skip_duplicates=True)
+            add_edge(src, dst)
+
+        # Always manually flush the last batch of swhids/edges
+        flush_edges()
 
     def add_edges_using_storage(self, source: ExtendedSWHID) -> None:
         _ADD_EDGES_USING_STORAGE_METHODS_PER_OBJECT_TYPE[source.object_type](
