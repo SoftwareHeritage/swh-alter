@@ -140,6 +140,7 @@ def test_cli_remove_dry_run_fails_without_mode(remove_config):
             "swh:1:ori:cafecafecafecafecafecafecafecafecafecafe",
         ],
         obj={"config": remove_config},
+        catch_exceptions=False,
     )
     assert "Invalid value for '--dry-run'" in result.output
     assert result.exit_code == 2
@@ -170,6 +171,7 @@ def test_cli_remove_dry_run_stop_before_recovery_bundle(
                 "swh:1:ori:cafecafecafecafecafecafecafecafecafecafe",
             ],
             obj={"config": remove_config},
+            catch_exceptions=False,
         )
     assert result.exit_code == 0
     assert "We would remove 2 objects" in result.output
@@ -201,6 +203,7 @@ def test_cli_remove_dry_run_stop_before_removal(
             "swh:1:ori:cafecafecafecafecafecafecafecafecafecafe",
         ],
         obj={"config": remove_config},
+        catch_exceptions=False,
     )
     assert result.exit_code == 0
     create_recovery_bundle_method.assert_called_once()
@@ -228,6 +231,7 @@ def test_cli_remove_display_decryption_key(
             "swh:1:ori:cafecafecafecafecafecafecafecafecafecafe",
         ],
         env={"SWH_CONFIG_FILENAME": remove_config_path},
+        catch_exceptions=False,
     )
     assert result.exit_code == 0
     assert "Recovery bundle decryption key: SUPER-SECRET-KEY" in result.output
@@ -252,6 +256,7 @@ def test_cli_remove_colored_output(
         ],
         env={"SWH_CONFIG_FILENAME": remove_config_path},
         color=True,
+        catch_exceptions=False,
     )
     assert result.exit_code == 0
     assert (
@@ -313,6 +318,7 @@ def test_cli_remove_origin_conversions(
             "swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165",
         ],
         obj={"config": remove_config},
+        catch_exceptions=False,
     )
     args, _ = Remover.get_removable.call_args
     assert set(args[0]) == {
@@ -339,6 +345,7 @@ def test_cli_remove_output_subgraphs(mocker, mocked_external_resources, remove_c
             swhid,
         ],
         obj={"config": remove_config},
+        catch_exceptions=False,
     )
     Remover.get_removable.assert_called_once()
     args, kwargs = Remover.get_removable.call_args
@@ -399,6 +406,7 @@ def test_cli_remove_create_bundle_no_extra_options(
         ],
         input=remove_input_proceed_with_removal,
         obj={"config": remove_config},
+        catch_exceptions=False,
     )
     remover_for_bundle_creation.create_recovery_bundle.assert_called_once()
     _, kwargs = remover_for_bundle_creation.create_recovery_bundle.call_args
@@ -426,6 +434,7 @@ def test_cli_remove_create_bundle_with_options(
         ],
         input=remove_input_proceed_with_removal,
         obj={"config": remove_config},
+        catch_exceptions=False,
     )
     remover_for_bundle_creation.create_recovery_bundle.assert_called_once()
     _, kwargs = remover_for_bundle_creation.create_recovery_bundle.call_args
@@ -518,6 +527,7 @@ def test_cli_list_candidates_omit_referenced(mocked_external_resources, remove_c
         list_candidates,
         ["swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165"],
         obj={"config": remove_config},
+        catch_exceptions=False,
     )
     assert result.exit_code == 0
     assert set(result.stdout.splitlines()) == {
@@ -546,6 +556,7 @@ def test_cli_list_candidates_no_omit_referenced(
         list_candidates,
         ["--no-omit-referenced", "https://example.com/swh/graph2"],
         obj={"config": remove_config},
+        catch_exceptions=False,
     )
     assert result.exit_code == 0
     assert set(result.stdout.splitlines()) == {
@@ -586,6 +597,7 @@ def test_cli_list_candidates_multiple_swhids(mocked_external_resources, remove_c
             "swh:1:rev:0000000000000000000000000000000000000003",
         ],
         obj={"config": remove_config},
+        catch_exceptions=False,
     )
     assert result.exit_code == 0, result.output
     assert set(result.stdout.splitlines()) == {
@@ -647,6 +659,7 @@ def test_cli_recovery_bundle_extract_content_using_decryption_key_to_file(
                 "swh:1:cnt:d81cc0710eb6cf9efd5b920a8453e1e07157b6cd",
             ],
             obj={"config": DEFAULT_CONFIG},
+            catch_exceptions=False,
         )
         assert result.exit_code == 0
         with open("data", "rb") as f:
