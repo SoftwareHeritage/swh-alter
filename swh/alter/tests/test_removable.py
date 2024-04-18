@@ -22,6 +22,7 @@ from .test_inventory import graph_client_with_only_initial_origin  # noqa: F401
 from .test_inventory import graph_client_with_submodule  # noqa: F401
 from .test_inventory import origin_with_submodule  # noqa: F401
 from .test_inventory import sample_populated_storage  # noqa: F401
+from .test_inventory import storage_with_forked_origin_removed  # noqa: F401
 from .test_subgraph import write_dot_if_requested
 
 
@@ -226,4 +227,31 @@ def test_mark_removable_on_forked_origin(
         "swh:1:cnt:0000000000000000000000000000000000000015",
         "swh:1:cnt:0000000000000000000000000000000000000014",
         "swh:1:cnt:0000000000000000000000000000000000000011",
+    }
+
+
+def test_mark_removable_on_initial_origin_with_forked_origin_removed(
+    storage_with_forked_origin_removed,  # noqa: F811
+    graph_client_with_both_origins,  # noqa: F811
+    inventory_from_initial_origin,
+):
+    # Test the case of an outdated graph
+    subgraph = mark_removable(
+        storage_with_forked_origin_removed,
+        graph_client_with_both_origins,
+        inventory_from_initial_origin,
+    )
+    assert {str(swhid) for swhid in subgraph.removable_swhids()} == {
+        "swh:1:ori:83404f995118bd25774f4ac14422a8f175e7a054",
+        "swh:1:snp:0000000000000000000000000000000000000020",
+        "swh:1:rel:0000000000000000000000000000000000000010",
+        "swh:1:rev:0000000000000000000000000000000000000009",
+        "swh:1:rev:0000000000000000000000000000000000000003",
+        "swh:1:dir:0000000000000000000000000000000000000008",
+        "swh:1:dir:0000000000000000000000000000000000000006",
+        "swh:1:dir:0000000000000000000000000000000000000002",
+        "swh:1:cnt:0000000000000000000000000000000000000007",
+        "swh:1:cnt:0000000000000000000000000000000000000005",
+        "swh:1:cnt:0000000000000000000000000000000000000004",
+        "swh:1:cnt:0000000000000000000000000000000000000001",
     }

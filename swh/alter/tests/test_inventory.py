@@ -693,3 +693,41 @@ def test_inventory_with_submodule_stops_at_directory(
         "swh:1:rev:0000000000000000000000000000000000000031",
         "swh:1:dir:0000000000000000000000000000000000000030",
     }
+
+
+#
+# Outdated graph (and successive removals of forks)
+# ================================================
+
+
+@pytest.fixture
+def storage_with_forked_origin_removed(sample_populated_storage):
+    removed_swhids = [
+        "swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165",
+        "swh:1:snp:0000000000000000000000000000000000000022",
+        "swh:1:rel:0000000000000000000000000000000000000021",
+        "swh:1:rev:0000000000000000000000000000000000000018",
+        "swh:1:rev:0000000000000000000000000000000000000013",
+        "swh:1:dir:0000000000000000000000000000000000000017",
+        "swh:1:dir:0000000000000000000000000000000000000016",
+        "swh:1:dir:0000000000000000000000000000000000000012",
+        "swh:1:cnt:0000000000000000000000000000000000000015",
+        "swh:1:cnt:0000000000000000000000000000000000000014",
+        "swh:1:cnt:0000000000000000000000000000000000000011",
+    ]
+    result = sample_populated_storage.object_delete(
+        [ExtendedSWHID.from_string(swhid) for swhid in removed_swhids]
+    )
+    assert result == {
+        "content:delete": 2,
+        "content:delete:bytes": 0,
+        "directory:delete": 3,
+        "origin:delete": 1,
+        "origin_visit:delete": 1,
+        "origin_visit_status:delete": 1,
+        "release:delete": 1,
+        "revision:delete": 2,
+        "skipped_content:delete": 1,
+        "snapshot:delete": 1,
+    }
+    return sample_populated_storage
