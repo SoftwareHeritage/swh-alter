@@ -8,7 +8,6 @@ import contextlib
 from datetime import datetime, timezone
 import itertools
 import logging
-import operator
 import os
 from pathlib import Path
 import re
@@ -63,6 +62,7 @@ from swh.storage.interface import HashDict, StorageInterface
 from .bech32 import Encoding as Bech32Encoding
 from .bech32 import bech32_decode, bech32_encode, convert_bits
 from .progressbar import ProgressBar, ProgressBarInit, no_progressbar
+from .utils import iter_swhids_grouped_by_type
 
 logger = logging.getLogger(__name__)
 
@@ -806,7 +806,9 @@ class RecoveryBundleCreator:
         arcname = f"skipped_contents/{basename}_{index}.age"
         self._write(arcname, value_to_kafka(skipped_content.to_dict()))
 
-    def _add_contents(self, content_swhids: List[ExtendedSWHID]):
+    def _add_contents(
+        self, content_swhids: List[ExtendedSWHID]
+    ) -> Iterable[Content | SkippedContent]:
         assert all(
             swhid.object_type == ExtendedObjectType.CONTENT for swhid in content_swhids
         )
@@ -825,7 +827,7 @@ class RecoveryBundleCreator:
                     raise ValueError(f"Unable to find {swhid} in storage")
                 for index, skipped_content in enumerate(skipped_contents, start=1):
                     self._add_skipped_content(swhid, index, skipped_content)
-                    self._registration_callback(skipped_content)
+                    yield skipped_content
             else:
                 data = self._storage.content_get_data(_from_hashes(**content.hashes()))
                 if data is None:
@@ -839,9 +841,11 @@ class RecoveryBundleCreator:
                     _swhid_to_arcname(swhid),
                     value_to_kafka(populated_content.to_dict()),
                 )
-                self._registration_callback(populated_content)
+                yield populated_content
 
-    def _add_directories(self, directory_swhids: List[ExtendedSWHID]):
+    def _add_directories(
+        self, directory_swhids: List[ExtendedSWHID]
+    ) -> Iterable[Directory]:
         assert all(
             swhid.object_type == ExtendedObjectType.DIRECTORY
             for swhid in directory_swhids
@@ -859,9 +863,11 @@ class RecoveryBundleCreator:
             _corrupted, directory = result
             # If it's corrupted we still should backup it anyway
             self._write(_swhid_to_arcname(swhid), value_to_kafka(directory.to_dict()))
-            self._registration_callback(directory)
+            yield directory
 
-    def _add_revisions(self, revision_swhids: List[ExtendedSWHID]):
+    def _add_revisions(
+        self, revision_swhids: List[ExtendedSWHID]
+    ) -> Iterator[Revision]:
         assert all(
             swhid.object_type == ExtendedObjectType.REVISION
             for swhid in revision_swhids
@@ -875,9 +881,9 @@ class RecoveryBundleCreator:
             if revision is None:
                 raise ValueError(f"Unable to find {swhid} in storage")
             self._write(_swhid_to_arcname(swhid), value_to_kafka(revision.to_dict()))
-            self._registration_callback(revision)
+            yield revision
 
-    def _add_releases(self, release_swhids: List[ExtendedSWHID]):
+    def _add_releases(self, release_swhids: List[ExtendedSWHID]) -> Iterator[Release]:
         assert all(
             swhid.object_type == ExtendedObjectType.RELEASE for swhid in release_swhids
         )
@@ -890,9 +896,11 @@ class RecoveryBundleCreator:
             if release is None:
                 raise ValueError(f"Unable to find {swhid} in storage")
             self._write(_swhid_to_arcname(swhid), value_to_kafka(release.to_dict()))
-            self._registration_callback(release)
+            yield release
 
-    def _add_snapshots(self, snapshot_swhids: List[ExtendedSWHID]):
+    def _add_snapshots(
+        self, snapshot_swhids: List[ExtendedSWHID]
+    ) -> Iterator[Snapshot]:
         assert all(
             swhid.object_type == ExtendedObjectType.SNAPSHOT
             for swhid in snapshot_swhids
@@ -904,7 +912,7 @@ class RecoveryBundleCreator:
             if snapshot is None:
                 raise ValueError(f"Unable to find {swhid} in storage")
             self._write(_swhid_to_arcname(swhid), value_to_kafka(snapshot.to_dict()))
-            self._registration_callback(snapshot)
+            yield snapshot
 
     def _add_origin_visit(self, basename: str, visit: OriginVisit):
         arcname = f"origin_visits/{basename}_" f"{visit.visit}.age"
@@ -918,7 +926,9 @@ class RecoveryBundleCreator:
         )
         self._write(arcname, value_to_kafka(status.to_dict()))
 
-    def _add_origins(self, origin_swhids: List[ExtendedSWHID]):
+    def _add_origins(
+        self, origin_swhids: List[ExtendedSWHID]
+    ) -> Iterator[Origin | OriginVisit | OriginVisitStatus]:
         assert all(
             swhid.object_type == ExtendedObjectType.ORIGIN for swhid in origin_swhids
         )
@@ -934,40 +944,34 @@ class RecoveryBundleCreator:
             basename = str(swhid).replace(":", "_")
             arcname = f"origins/{basename}.age"
             self._write(arcname, value_to_kafka(origin_d))
-            self._registration_callback(origin)
+            yield origin
             for origin_visit_with_statuses in stream_results(
                 self._storage.origin_visit_get_with_statuses, origin.url
             ):
                 self._add_origin_visit(basename, origin_visit_with_statuses.visit)
-                self._registration_callback(origin_visit_with_statuses.visit)
+                yield origin_visit_with_statuses.visit
                 for origin_visit_status in origin_visit_with_statuses.statuses:
                     self._add_origin_visit_status(basename, origin_visit_status)
-                    self._registration_callback(origin_visit_status)
+                    yield origin_visit_status
 
     def backup_swhids(self, swhids: Iterable[ExtendedSWHID]) -> int:
-        # groupby() splits consecutive groups, so we need to order the list first
-        def key(swhid: ExtendedSWHID) -> int:
-            return _OBJECT_TYPE_ORDERING[swhid.object_type]
-
-        sorted_swhids = sorted(swhids, key=key)
-        for object_type, grouped_swhids in itertools.groupby(
-            sorted_swhids, key=operator.attrgetter("object_type")
+        handlers: Dict[
+            ExtendedObjectType,
+            Callable[[List[ExtendedSWHID]], Iterable[BaseModel]],
+        ] = {
+            ExtendedObjectType.CONTENT: self._add_contents,
+            ExtendedObjectType.DIRECTORY: self._add_directories,
+            ExtendedObjectType.REVISION: self._add_revisions,
+            ExtendedObjectType.RELEASE: self._add_releases,
+            ExtendedObjectType.SNAPSHOT: self._add_snapshots,
+            ExtendedObjectType.ORIGIN: self._add_origins,
+        }
+        count = 0
+        for obj in iter_swhids_grouped_by_type(
+            swhids, handlers=handlers, collector=list
         ):
-            _ADD_OBJECTS_METHODS[object_type](self, list(grouped_swhids))
-        self._manifest.swhids.extend([str(swhid) for swhid in sorted_swhids])
-        return len(sorted_swhids)
-
-
-_ADD_OBJECTS_METHODS: Dict[
-    ExtendedObjectType, Callable[[RecoveryBundleCreator, List[ExtendedSWHID]], None]
-] = {
-    ExtendedObjectType.CONTENT: RecoveryBundleCreator._add_contents,
-    ExtendedObjectType.DIRECTORY: RecoveryBundleCreator._add_directories,
-    ExtendedObjectType.REVISION: RecoveryBundleCreator._add_revisions,
-    ExtendedObjectType.RELEASE: RecoveryBundleCreator._add_releases,
-    ExtendedObjectType.SNAPSHOT: RecoveryBundleCreator._add_snapshots,
-    ExtendedObjectType.ORIGIN: RecoveryBundleCreator._add_origins,
-}
-_OBJECT_TYPE_ORDERING: Dict[ExtendedObjectType, int] = {
-    object_type: order for order, object_type in enumerate(_ADD_OBJECTS_METHODS.keys())
-}
+            self._registration_callback(obj)
+            if hasattr(obj, "swhid"):
+                self._manifest.swhids.append(str(obj.swhid()))
+            count += 1
+        return count
