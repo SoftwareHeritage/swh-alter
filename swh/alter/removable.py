@@ -288,8 +288,45 @@ NEVER_REMOVABLE: Set[ExtendedSWHID] = {
         "swh:1:cnt:fe1990c57a840e97c1075904f9e96daed2e65030",
         "swh:1:cnt:ff30235f076b3fde71fba6ceafa0f510e0006261",
         "swh:1:cnt:ff7dbb100623d2c1f447485012e8de229821cc84",
+        # MIT License
+        "swh:1:cnt:654d0bfe943437d43242325b1fbcff5f400d84ee",
+        "swh:1:cnt:e7af2f77107d73046421ef56c4684cbfdd3c1e89",
+        "swh:1:cnt:ee27ba4b4412b0e4a05af5e3d8a005bc6681fdf3",
+        # GPLv2
+        "swh:1:cnt:d159169d1050894d3ea3b98e1c965c4058208fe1",
+        "swh:1:cnt:d511905c1647a1e311e8b20d5930a37a9c2531cd",
+        "swh:1:cnt:d60c31a97a544b53039088d14fe9114583c0efc3",
+        # GPLv3
+        "swh:1:cnt:65c5ca88a67c30becee01c5a8816d964b03862f9",
+        "swh:1:cnt:94a9ed024d3859793618152ea559a168bbcbb5e2",
+        "swh:1:cnt:9cecc1d4669ee8af2ca727a5d8cde10cd8b2d7cc",
+        "swh:1:cnt:f288702d2fa16d3cdf0035b15a9fcbc552cd88e7",
+        # AGPLv3
+        "swh:1:cnt:dba13ed2ddf783ee8118c6a581dbf75305f816a3",
+        # Apache License 2.0
+        "swh:1:cnt:261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64",
+        "swh:1:cnt:8dada3edaf50dbc082c9a125058f25def75e625a",
+        "swh:1:cnt:d645695673349e3947e8e5ae42332d0ac3164cd7",
+        # ISC License
+        "swh:1:cnt:19129e315fe593965a2fdd50ec0d1253bcbd2ece",
+        # Create React App .gitignore
+        "swh:1:cnt:4d29575de80483b005c29bfcac5061cd2f45313e",
+        # React logo
+        "swh:1:cnt:6b60c1042f58d9fabb75485aa3624dddcf633b5c",
+        # VisualStudio default .gitattributes
+        "swh:1:cnt:1ff0c423042b46cb1d617b81efb715defbe8054d",
+        # Very common .gitattributes
+        "swh:1:cnt:dfe0770424b2a19faf507a501ebfc23be8f54e7b",
         # Empty directory
         "swh:1:dir:4b825dc642cb6eb9a060e54bf8d69288fbee4904",
+        # Directory with empty .keep
+        "swh:1:dir:29a422c19251aeaeb907175e9b3219a9bed6c616",
+        # Directory with empty .gitkeep
+        "swh:1:dir:d564d0bc3dd917926892c55e3706cc116d5b165e",
+        # Directory with empty .gitignore
+        "swh:1:dir:82e3a754b6a0fcb238b03c0e47d05219fbf9cf89",
+        # Directory with empty __init__.py
+        "swh:1:dir:9d1dcfdaf1a6857c5f83dc27019c7600e1ffaff8",
         # Empty snapshot
         "swh:1:snp:1a8893e6a86f444e8be8e7bda6cb34fb1735a00e",
     ]
