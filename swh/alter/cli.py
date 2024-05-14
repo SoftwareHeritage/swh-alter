@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import logging
+import pathlib
 from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional, Set, cast
 
 import click
@@ -320,7 +321,7 @@ def get_remover(ctx: click.Context, dry_run: bool = False) -> "Remover":
 @click.option(
     "--recovery-bundle",
     metavar="PATH",
-    type=click.Path(writable=True, dir_okay=False),
+    type=click.Path(dir_okay=False),
     required=True,
     help="path to the recovery bundle that will be created",
 )
@@ -355,6 +356,16 @@ def remove(
         )
     except ValueError as e:
         raise click.ClickException(f"Wrong secret sharing configuration: {e.args[0]}")
+
+    if dry_run != "stop-before-recovery-bundle":
+        try:
+            p = pathlib.Path(recovery_bundle)
+            p.touch(exist_ok=False)
+            p.unlink()
+        except FileExistsError:
+            raise click.ClickException(f"File “{recovery_bundle}” already exists")
+        except PermissionError:
+            raise click.ClickException(f"Permission denied: “{recovery_bundle}”")
 
     remover = get_remover(ctx, dry_run)
 

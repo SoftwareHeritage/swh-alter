@@ -180,7 +180,10 @@ def test_cli_remove_dry_run_stop_before_recovery_bundle(
 
 
 def test_cli_remove_dry_run_stop_before_removal(
-    mocker, mocked_external_resources, remove_config
+    mocker,
+    mocked_external_resources,
+    remove_config,
+    tmp_path,
 ):
     removable_swhids = [
         ExtendedSWHID.from_string("swh:1:ori:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
@@ -198,7 +201,7 @@ def test_cli_remove_dry_run_stop_before_removal(
             "--identifier",
             "test",
             "--recovery-bundle",
-            "/nonexistent",
+            str(tmp_path / "bundle"),
             "--dry-run=stop-before-removal",
             "swh:1:ori:cafecafecafecafecafecafecafecafecafecafe",
         ],
@@ -211,7 +214,11 @@ def test_cli_remove_dry_run_stop_before_removal(
 
 
 def test_cli_remove_display_decryption_key(
-    capture_output, mocker, mocked_external_resources, remove_config_path
+    capture_output,
+    mocker,
+    mocked_external_resources,
+    remove_config_path,
+    tmp_path,
 ):
     mocker.patch.object(Remover, "get_removable", return_value=[])
     mocker.patch.object(
@@ -226,7 +233,7 @@ def test_cli_remove_display_decryption_key(
             "--identifier",
             "test",
             "--recovery-bundle",
-            "/nonexistent",
+            str(tmp_path / "bundle"),
             "--dry-run=stop-before-removal",
             "swh:1:ori:cafecafecafecafecafecafecafecafecafecafe",
         ],
@@ -468,6 +475,7 @@ def test_cli_remove_create_bundle_with_expire_unparseable(
 def test_cli_remove_can_be_canceled(
     remover_for_bundle_creation,
     remove_config,
+    tmp_path,
 ):
     runner = CliRunner()
     result = runner.invoke(
@@ -476,7 +484,7 @@ def test_cli_remove_can_be_canceled(
             "--identifier",
             "test",
             "--recovery-bundle",
-            "/nonexistent",
+            str(tmp_path / "bundle"),
             "swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165",
         ],
         input="n\n",
