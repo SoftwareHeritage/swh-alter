@@ -3,7 +3,6 @@
 # License: GNU General Public License version 3, or any later version
 # See top-level LICENSE file for more information
 
-from abc import abstractmethod
 import collections
 import contextlib
 from datetime import datetime, timezone
@@ -27,7 +26,6 @@ from typing import (
     Iterator,
     List,
     Optional,
-    Protocol,
     Sequence,
     Set,
     TextIO,
@@ -49,8 +47,6 @@ from swh.model.model import (
     BaseModel,
     Content,
     Directory,
-    KeyType,
-    ModelObjectType,
     Origin,
     OriginVisit,
     OriginVisitStatus,
@@ -59,7 +55,7 @@ from swh.model.model import (
     SkippedContent,
     Snapshot,
 )
-from swh.model.swhids import CoreSWHID, ExtendedObjectType, ExtendedSWHID
+from swh.model.swhids import ExtendedObjectType, ExtendedSWHID
 import swh.storage.algos.directory
 import swh.storage.algos.snapshot
 from swh.storage.interface import HashDict, StorageInterface
@@ -742,22 +738,6 @@ def _from_hashes(
     return d
 
 
-class HasUniqueKey(Protocol):
-    @property
-    def object_type(self) -> Union[str, ModelObjectType]:
-        ...
-
-    @abstractmethod
-    def unique_key(self) -> KeyType:
-        ...
-
-
-class HasSwhid(HasUniqueKey):
-    @abstractmethod
-    def swhid(self) -> Union[CoreSWHID, Optional[CoreSWHID], ExtendedSWHID]:
-        ...
-
-
 class RecoveryBundleCreator:
     def __init__(
         self,
@@ -766,9 +746,7 @@ class RecoveryBundleCreator:
         removal_identifier: str,
         object_public_key: AgePublicKey,
         decryption_key_shares: Dict[str, str],
-        registration_callback: Optional[
-            Callable[[Union[HasSwhid, HasUniqueKey]], None]
-        ] = None,
+        registration_callback: Optional[Callable[[BaseModel], None]] = None,
     ):
         self._path = path
         self._storage = storage

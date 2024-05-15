@@ -7,12 +7,12 @@ import collections
 from datetime import datetime
 import itertools
 import logging
-from typing import Dict, List, Optional, TextIO, Tuple, Union, cast
+from typing import Dict, List, Optional, TextIO, Tuple, cast
 
 from swh.core.utils import grouper
 from swh.graph.http_client import RemoteGraphClient
 from swh.journal.writer.kafka import KafkaJournalWriter
-from swh.model.model import Content, KeyType, Origin
+from swh.model.model import BaseModel, Content, KeyType, Origin
 from swh.model.swhids import CoreSWHID, ExtendedObjectType, ExtendedSWHID
 from swh.objstorage.exc import ObjNotFoundError
 from swh.objstorage.interface import (
@@ -27,8 +27,6 @@ from .inventory import make_inventory
 from .progressbar import ProgressBar, ProgressBarInit, no_progressbar
 from .recovery_bundle import (
     AgeSecretKey,
-    HasSwhid,
-    HasUniqueKey,
     RecoveryBundle,
     RecoveryBundleCreator,
     SecretSharing,
@@ -116,7 +114,7 @@ class Remover:
             output_pruned_removable_subgraph.close()
         return list(removable_subgraph.removable_swhids())
 
-    def register_object(self, obj: Union[HasSwhid, HasUniqueKey]) -> None:
+    def register_object(self, obj: BaseModel) -> None:
         # Register for removal from storage
         if hasattr(obj, "swhid"):
             # StorageInterface.ObjectDeletionInterface.remove uses SWHIDs
@@ -170,14 +168,14 @@ class Remover:
             length=len(bundle.swhids), label="Loading objects…"
         ) as bar:
             for obj in iterchain:
-                self.register_object(cast(Union[HasSwhid, HasUniqueKey], obj))
+                self.register_object(obj)
                 bar.update(n_steps=1)
             for origin in bundle.origins():
                 self.register_object(origin)
                 for obj in itertools.chain(
                     bundle.origin_visits(origin), bundle.origin_visit_statuses(origin)
                 ):
-                    self.register_object(cast(Union[HasSwhid, HasUniqueKey], obj))
+                    self.register_object(obj)
                 bar.update(n_steps=1)
 
     def create_recovery_bundle(

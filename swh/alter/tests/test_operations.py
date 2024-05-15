@@ -7,19 +7,20 @@ from datetime import datetime, timedelta, timezone
 import logging
 import shutil
 import subprocess
-from typing import Any, List, Set, Union
+from typing import Any, List, Set
 from unittest.mock import call
 
 import pytest
 import yaml
 
+from swh.model.model import BaseModel
 from swh.model.swhids import ExtendedObjectType, ExtendedSWHID
 from swh.objstorage.interface import ObjStorageInterface
 from swh.search.interface import SearchInterface
 from swh.storage.interface import StorageInterface
 
 from ..operations import Remover, RemoverError
-from ..recovery_bundle import HasSwhid, HasUniqueKey, SecretSharing
+from ..recovery_bundle import SecretSharing
 from .test_inventory import (  # noqa
     directory_6_with_multiple_entries_pointing_to_the_same_content,
     snapshot_20_with_multiple_branches_pointing_to_the_same_head,
@@ -444,7 +445,7 @@ def test_remover_register_objects_from_bundle(
     # We cannot use a Set as dict are not hashable
     obj_unique_keys: List[Any] = []
 
-    def register_object(obj: Union[HasSwhid, HasUniqueKey]):
+    def register_object(obj: BaseModel):
         if hasattr(obj, "swhid"):
             obj_swhids.add(str(obj.swhid()))
         obj_unique_keys.append(obj.unique_key())
