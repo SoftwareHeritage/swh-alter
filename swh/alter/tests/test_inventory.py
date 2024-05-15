@@ -21,7 +21,7 @@ from swh.model.model import (
     RevisionType,
     Snapshot,
     SnapshotBranch,
-    TargetType,
+    SnapshotTargetType,
     Timestamp,
     TimestampWithTimezone,
 )
@@ -107,13 +107,13 @@ def snapshot_20_with_multiple_branches_pointing_to_the_same_head():
         id=h(20),
         branches={
             b"refs/heads/master": SnapshotBranch(
-                target=h(9), target_type=TargetType.REVISION
+                target=h(9), target_type=SnapshotTargetType.REVISION
             ),
             b"refs/heads/dev": SnapshotBranch(
-                target=h(9), target_type=TargetType.REVISION
+                target=h(9), target_type=SnapshotTargetType.REVISION
             ),
             b"refs/tags/v1.0": SnapshotBranch(
-                target=h(10), target_type=TargetType.RELEASE
+                target=h(10), target_type=SnapshotTargetType.RELEASE
             ),
         },
     )
@@ -595,7 +595,7 @@ def sample_populated_storage_using_submodule(
         id=h(32),
         branches={
             b"refs/heads/master": SnapshotBranch(
-                target=h(31), target_type=TargetType.REVISION
+                target=h(31), target_type=SnapshotTargetType.REVISION
             ),
         },
     )
