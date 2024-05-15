@@ -134,7 +134,7 @@ class Remover:
                     content = cast(Content, obj)
                     self.objids_to_remove.append(objid_from_dict(content.to_dict()))
         # Register for removal from the journal
-        self.journal_objects_to_remove[obj.object_type].append(obj.unique_key())
+        self.journal_objects_to_remove[str(obj.object_type)].append(obj.unique_key())
         # Register for removal from search
         if isinstance(obj, Origin):
             self.origin_urls_to_remove.append(obj.url)

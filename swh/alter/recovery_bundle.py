@@ -50,6 +50,7 @@ from swh.model.model import (
     Content,
     Directory,
     KeyType,
+    ModelObjectType,
     Origin,
     OriginVisit,
     OriginVisitStatus,
@@ -743,7 +744,7 @@ def _from_hashes(
 
 class HasUniqueKey(Protocol):
     @property
-    def object_type(self) -> str:
+    def object_type(self) -> Union[str, ModelObjectType]:
         ...
 
     @abstractmethod
