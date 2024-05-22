@@ -639,4 +639,128 @@ Options:
     New shared secret holders: YubiKey serial 4245067 slot 3, YubiKey serial 4245067 slot 2, Alabaster, YubiKey serial 4245067 slot 1, Innon, Essun
     Shared secrets for test-removal-2023-08-21 have been rolled over.
 
+.. _alter_mirror_removal_notifications:
 
+For mirrors: watching and acting on removal notifications
+---------------------------------------------------------
+
+To implement the policy regarding :ref:`mirrors and takedown requests performed
+on the main archive <mirror_takedown_requests>`, mirrors must run the
+notification watcher.
+
+This process will listen to the journal topic ``swh.journal.removal_notification``
+for unprocessed removal notifications. When one arrives, it will create
+a new request in the :ref:`masking proxy database` <swh-storage-masking>`,
+adding all removed SWHIDs listed in the notification with the state “*decision
+pending*”. These objects will still be present on the mirror but not be
+available to the public. An email will also be sent to the mirror operators to
+notify that a new removal notification has arrived from the main archive.
+
+Mirror operators then need to chose–in accordance with they policies and
+legal/data protection department–between several options to handle the
+notification: perform the removal on the mirror, mask the listed objects
+permanently, dismiss the notification and lift the visibility restriction.
+
+Configuration for the mirror notification watcher
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The mirror notification watcher needs a configuration file. It can contain the
+same keys as the configuration required to perform removals. The minimum required
+looks like the following:
+
+.. code:: yaml
+
+    journal_client:
+      brokers: kafka.example.org:9092
+      group_id: mirror-notification-watcher
+      prefix: swh.journal
+    storage:
+      cls: remote
+      url: https://storage-ro
+    masking_admin:
+      cls: postgresql
+      db: service=masking-db-rw
+    emails:
+      from: swh-mirror@example.org
+      recipients:
+      - trinity@example.org
+      - neo@example.org
+    smtp:
+      host: localhost
+      port: 25
+
+The ``journal_client`` map follows the :ref:`journal configuration
+<cli-config-journal>` and defines how to access to the journal with the
+``swh.journal.notification_removal`` topic.
+
+The ``storage`` map follows the :ref:`storage configuration
+<<cli-config-storage>`. The storage is accessed read-only to perform
+verifications on the received removal notifications.
+
+The ``masking_admin`` map must contain the database connection class in ``cls``
+(most probably ``postgresql``) and its DSN in ``db``.
+
+The ``emails`` map defines the ``from`` address used to send emails, and the
+addresses listed as ``recipients`` will be informed that a new removal
+notification has arrived.
+
+The ``smtp`` map defines the ``host`` and ``port`` of the SMTP relay used
+to send emails.
+
+Running the mirror notification watcher
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+To run the mirror notification watcher, issue the following command:
+
+.. code:: console
+
+    $ swh alter run-mirror-notification-watcher
+
+The process should not terminate under normal circumstances.
+
+There is no additional command-line options.
+
+Acting on a removal notification
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Each notification will have its own ”removal identifier”. This identifier will
+be sent in the email received by mirror operators. To act on a removal
+notification, operators need to decide–in accordance to their policies–between
+three options:
+
+a) Replicate the removal operation on the mirror. Objects will be
+   deleted from the mirror. This command requires a configuration fully
+   setup for removals, and also the ``masking_admin`` map.
+
+   As it will create a recovery bundle (in case the operation needs to
+   be reverted), the ``--recovery-bundle`` option needs to be set
+   to the path where it will be created.
+
+   An example command:
+
+   .. code:: console
+
+      $ swh alter handle-removal-notification remove \
+            '20240525-example-identifier' \
+            --recovery-bundle=20240525-example-identifier.swh-recovery-bundle
+
+b) Permanently restrict the access of the objects removed from the main
+   archive. They will not be deleted by they will not be available to
+   the public anymore.
+
+   The command would look like:
+
+   .. code:: console
+
+      $ swh alter handle-removal-notification restrict-permanently \
+            '20240525-example-identifier'
+
+c) Dismiss the notification. The access restriction on objects removed
+   from the main archive will be lifted.
+
+   To give an example of a command:
+
+   .. code:: console
+
+      $ swh alter handle-removal-notification dismiss \
+            '20240525-example-identifier'

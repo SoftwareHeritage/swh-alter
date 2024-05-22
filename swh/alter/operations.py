@@ -9,12 +9,26 @@ from functools import partial, reduce
 import itertools
 import logging
 import operator
+import re
 import statistics
 import time
-from typing import Dict, FrozenSet, List, NamedTuple, Optional, Set, TextIO, Tuple, cast
+from typing import (
+    Any,
+    Dict,
+    FrozenSet,
+    Iterator,
+    List,
+    NamedTuple,
+    Optional,
+    Set,
+    TextIO,
+    Tuple,
+    cast,
+)
 
 import humanize
 from tabulate import tabulate
+import yaml
 
 from swh.core.utils import grouper
 from swh.graph.http_client import RemoteGraphClient
@@ -31,8 +45,10 @@ from swh.objstorage.interface import (
 )
 from swh.search.interface import SearchInterface
 from swh.storage.interface import ObjectDeletionInterface, StorageInterface
+from swh.storage.proxies.masking.db import MaskedState, MaskingAdmin, MaskingRequest
 
-from .inventory import get_raw_extrinsic_metadata, make_inventory
+from .inventory import RootsNotFound, get_raw_extrinsic_metadata, make_inventory
+from .mirror_notification_watcher import MASKING_REQUEST_IDENTIFIER_PREFIX
 from .progressbar import ProgressBar, ProgressBarInit, no_progressbar
 from .recovery_bundle import (
     AgeSecretKey,
@@ -52,6 +68,14 @@ OBJSTORAGE_DELETE_MAX_ATTEMPTS = 3
 
 class RemoverError(Exception):
     pass
+
+
+class MaskingRequestNotFound(Exception):
+    def __init__(self, masking_request_slug: str):
+        self.masking_request_slug = masking_request_slug
+
+    def __str__(self) -> str:
+        return f"Masking request “{self.masking_request_slug}” not found."
 
 
 def _secho(msg, **kwargs):
@@ -118,6 +142,7 @@ class Remover:
         removal_storages: Optional[Dict[str, ObjectDeletionInterface]] = None,
         removal_objstorages: Optional[Dict[str, ObjStorageInterface]] = None,
         removal_journals: Optional[Dict[str, KafkaJournalWriter]] = None,
+        masking_admin: Optional[MaskingAdmin] = None,
         progressbar: Optional[ProgressBarInit] = None,
     ):
         self.storage = storage
@@ -128,6 +153,7 @@ class Remover:
         self.removal_storages = removal_storages if removal_storages else {}
         self.removal_objstorages = removal_objstorages if removal_objstorages else {}
         self.removal_journals = removal_journals if removal_journals else {}
+        self.masking_admin = masking_admin
         self.recovery_bundle_path: Optional[str] = None
         self.object_secret_key: Optional[AgeSecretKey] = None
         self.swhids_to_remove: List[ExtendedSWHID] = []
@@ -503,3 +529,140 @@ class Remover:
                 if not swhids.issuperset(set(recent_references)):
                     return True
         return False
+
+    @staticmethod
+    def _get_info_from_masking_request(
+        masking_request: MaskingRequest,
+    ) -> Dict[str, Any]:
+        match = re.search(
+            r"^---\n.*", masking_request.reason, flags=re.MULTILINE | re.DOTALL
+        )
+        if not match:
+            raise ValueError("Unable to find marker lines in masking request’s reason")
+        return yaml.safe_load(match.group(0))
+
+    @staticmethod
+    def _get_requested_from_masking_request(
+        requested: List[str],
+    ) -> Iterator[Origin | ExtendedSWHID]:
+        for s in requested:
+            if s.startswith("swh:1:"):
+                yield ExtendedSWHID.from_string(s)
+            else:
+                yield Origin(url=s)
+
+    def handle_removal_notification_with_removal(
+        self,
+        notification_removal_identifier: str,
+        secret_sharing: SecretSharing,
+        recovery_bundle_path: str,
+        ignore_requested=List[Origin | ExtendedSWHID],
+        allow_empty_content_objects: bool = False,
+    ) -> None:
+        assert self.masking_admin is not None
+
+        masking_request_slug = (
+            f"{MASKING_REQUEST_IDENTIFIER_PREFIX}{notification_removal_identifier}"
+        )
+        # Recover data required to perform removal
+        with self.masking_admin.conn:
+            masking_request = self.masking_admin.find_request(masking_request_slug)
+            if masking_request is None:
+                raise MaskingRequestNotFound(masking_request_slug)
+            info = self._get_info_from_masking_request(masking_request)
+            requested = list(
+                set(self._get_requested_from_masking_request(info["requested"]))
+                - set(ignore_requested)
+            )
+            requested_swhids = [
+                o.swhid() if isinstance(o, Origin) else o for o in requested
+            ]
+
+        # Perform removal
+        try:
+            removable = self.get_removable(requested_swhids)
+        except RootsNotFound as e:
+            _secho(
+                "Some requested objects were not found:",
+                err=True,
+                fg="red",
+                bold=True,
+            )
+            for label in e.get_labels(requested):
+                _secho(f"- {label}", err=True)
+            raise
+
+        decryption_key = self.create_recovery_bundle(
+            secret_sharing=secret_sharing,
+            requested=requested,
+            removable=removable,
+            recovery_bundle_path=recovery_bundle_path,
+            removal_identifier=masking_request_slug,
+            reason=info["reason"],
+            allow_empty_content_objects=allow_empty_content_objects,
+        )
+        _secho(f"Recovery bundle decryption key: {decryption_key}", fg="blue")
+        try:
+            self.remove()
+        except Exception as e:
+            _secho(str(e), err=True, fg="red", bold=True)
+            _secho("Rolling back…", fg="cyan")
+            self.restore_recovery_bundle()
+            raise
+
+        # Clear removed objects in masking db
+        recovery_bundle = RecoveryBundle(recovery_bundle_path)
+        removed_swhids = recovery_bundle.swhids
+        with self.masking_admin.conn:
+            masking_states = self.masking_admin.get_states_for_request(
+                masking_request.id
+            )
+            decision_pending_swhids = {
+                swhid
+                for swhid, state in masking_states.items()
+                if state == MaskedState.DECISION_PENDING
+            }
+            leftover_swhids = decision_pending_swhids - set(removed_swhids)
+            record = f"Made {len(removed_swhids)} objects visible again after removal."
+            if leftover_swhids:
+                record += (
+                    "\n\nObjects in state “decision pending” that were not removed:\n"
+                )
+                record += "\n".join(f"- {swhid}" for swhid in leftover_swhids)
+            self.masking_admin.set_object_state(
+                masking_request.id, MaskedState.VISIBLE, recovery_bundle.swhids
+            )
+            self.masking_admin.record_history(masking_request.id, record)
+
+    def handle_removal_notification_by_changing_masked_status(
+        self,
+        notification_removal_identifier: str,
+        masked_state: MaskedState,
+    ):
+        assert self.masking_admin is not None
+
+        masking_request_slug = (
+            f"{MASKING_REQUEST_IDENTIFIER_PREFIX}{notification_removal_identifier}"
+        )
+        with self.masking_admin.conn:
+            masking_request = self.masking_admin.find_request(masking_request_slug)
+            if masking_request is None:
+                raise MaskingRequestNotFound(masking_request_slug)
+            masking_states = self.masking_admin.get_states_for_request(
+                masking_request.id
+            )
+            swhids = list(masking_states.keys())
+            self.masking_admin.set_object_state(
+                masking_request.id,
+                MaskedState.RESTRICTED,
+                swhids,
+            )
+            match masked_state:
+                case MaskedState.RESTRICTED:
+                    masked_state_label = "permanently restricted"
+                case MaskedState.VISIBLE:
+                    masked_state_label = "visible again"
+                case MaskedState.DECISION_PENDING:
+                    masked_state_label = "restricted until a decision is made"
+            record = f"Made {len(swhids)} objects {masked_state_label}."
+            self.masking_admin.record_history(masking_request.id, record)

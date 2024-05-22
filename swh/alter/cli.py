@@ -207,7 +207,11 @@ def read_swhids(file: TextIO) -> Set["ExtendedSWHID"]:
     }
 
 
-def get_remover(ctx: click.Context, dry_run: bool = False) -> "Remover":
+def get_remover(
+    ctx: click.Context, dry_run: bool = False, require_masking_admin: bool = False
+) -> "Remover":
+    from psycopg2 import OperationalError, ProgrammingError
+
     from swh.core.api import RemoteException
     from swh.graph.http_client import GraphAPIError, RemoteGraphClient
     from swh.journal.writer import get_journal_writer
@@ -290,6 +294,18 @@ def get_remover(ctx: click.Context, dry_run: bool = False) -> "Remover":
     if known_missing_file := ctx.params.get("known_missing_file"):
         known_missing.update(read_swhids(known_missing_file))
 
+    if require_masking_admin:
+        from swh.storage.proxies.masking.db import MaskingAdmin
+
+        if "masking_admin" not in conf or "db" not in conf["masking_admin"]:
+            raise click.ClickException("masking_admin.db not found in configuration")
+        try:
+            masking_admin = MaskingAdmin.connect(conf["masking_admin"]["db"])
+        except (OperationalError, ProgrammingError) as e:
+            raise click.ClickException(f"Unable to connect to masking database: {e}")
+    else:
+        masking_admin = None
+
     return Remover(
         storage=storage,
         graph_client=graph_client,
@@ -298,6 +314,7 @@ def get_remover(ctx: click.Context, dry_run: bool = False) -> "Remover":
         removal_storages=cast(Dict[str, ObjectDeletionInterface], removal_storages),
         removal_objstorages=cast(Dict[str, ObjStorageInterface], removal_objstorages),
         removal_journals=cast(Dict[str, KafkaJournalWriter], removal_journals),
+        masking_admin=masking_admin,
         known_missing=known_missing,
         progressbar=progressbar,
     )
@@ -592,6 +609,106 @@ def list_candidates(
     )
     for swhid in removable_swhids:
         click.echo(swhid)
+
+
+@alter_cli_group.command("run-mirror-notification-watcher")
+@click.pass_context
+def run_mirror_notification_watcher(ctx: click.Context):
+    """Watch the journal for notifications from the main archive.
+
+    For removal notifications, we mask the associated objects until
+    a decision is made by the mirror operators.
+
+    Example configuration:
+
+        \b
+        journal_client:
+          brokers: kafka.example.org:9092
+          group_id: mirror-notification-watcher
+          prefix: swh.journal
+        storage:
+          cls: remote
+          url: https://storage-ro
+        masking_admin:
+          cls: postgresql
+          db: service=masking-db-rw
+        emails:
+          from: swh-mirror@example.org
+          recipients:
+          - trinity@example.org
+          - neo@example.org
+        smtp:
+          host: localhost
+          port: 25
+
+    The addresses listed as “recipients” in the “emails” section will receive
+    an email to let them know that a decision needs to be taken.
+    """
+
+    from swh.alter.mirror_notification_watcher import MirrorNotificationWatcher
+    from swh.journal.client import get_journal_client
+    from swh.storage import get_storage
+    from swh.storage.proxies.masking.db import MaskingAdmin
+
+    conf = ctx.obj["config"]
+
+    try:
+        storage = get_storage(**conf["storage"])
+        storage.check_config(check_write=False)
+    except Exception as e:
+        raise click.ClickException(f"Unable to query to the storage: {e}")
+
+    try:
+        journal_client = get_journal_client(
+            **{
+                **conf["journal_client"],
+                "cls": "kafka",
+                "object_types": ["removal_notification"],
+            }
+        )
+    except Exception as e:
+        raise click.ClickException(f"Unable to setup the journal client: {repr(e)}")
+
+    try:
+        masking_admin_dsn = conf["masking_admin"]["db"]
+        _ = MaskingAdmin.connect(masking_admin_dsn)
+    except Exception as e:
+        raise click.ClickException(
+            f"Unable to connect to the masking proxy database: {repr(e)}"
+        )
+
+    emails_from = conf["emails"].get("from")
+    if emails_from is None:
+        raise click.ClickException("“emails.from” has not been set.")
+    emails_recipients = conf["emails"].get("recipients")
+    if emails_recipients is None:
+        raise click.ClickException("“emails.recipients” has not been set.")
+    if not isinstance(emails_recipients, list) or len(emails_recipients) < 1:
+        raise click.ClickException(
+            "“emails.recipients” must be a list and contain at least one email address."
+        )
+
+    smtp_host = conf["smtp"].get("host")
+    if smtp_host is None:
+        raise click.ClickException("“smtp.host” has not been set.")
+    try:
+        smtp_port = int(conf["smtp"].get("port"))
+    except Exception as e:
+        raise click.ClickException(f"“smtp.port” must be set to a port number: {e}")
+
+    watcher = MirrorNotificationWatcher(
+        storage=storage,
+        journal_client=journal_client,
+        masking_admin_dsn=masking_admin_dsn,
+        emails_from=emails_from,
+        emails_recipients=emails_recipients,
+        smtp_host=smtp_host,
+        smtp_port=smtp_port,
+    )
+    try:
+        watcher.watch()
+    except KeyboardInterrupt:
+        ctx.exit(0)
 
 
 @alter_cli_group.group(name="recovery-bundle", context_settings=CONTEXT_SETTINGS)
@@ -1172,3 +1289,220 @@ def rollover(
         click.secho("Shared secrets for ", fg="green", nl=False)
         click.secho(bundle.removal_identifier, fg="green", bold=True, nl=False)
         click.secho(" have been rolled over.", fg="green")
+
+
+@alter_cli_group.group(
+    name="handle-removal-notification", context_settings=CONTEXT_SETTINGS
+)
+@click.pass_context
+def handle_removal_notification_cli_group(ctx):
+    """Tools to handle removal notifications."""
+    return ctx
+
+
+@handle_removal_notification_cli_group.command(name="remove")
+@click.option(
+    "--recovery-bundle",
+    type=click.Path(dir_okay=False),
+    required=True,
+)
+@click.option(
+    "--allow-empty-content-objects/--disallow-empty-content-objects",
+    "allow_empty_content_objects",
+    default=False,
+    help="Create recovery bundle even when data for Content object cannot be found",
+)
+@click.option(
+    "--ignore-requested",
+    "ignore_requested",
+    metavar="ORIGIN_OR_SWHID",
+    multiple=True,
+    type=SwhidOrUrlParamType(),
+    help="object that should be ignored from the list of "
+    "requested objects to be removed",
+)
+@click.argument(
+    "removal-identifier",
+    required=True,
+)
+@click.pass_context
+def handle_removal_notification_with_removal(
+    ctx,
+    recovery_bundle,
+    removal_identifier,
+    allow_empty_content_objects,
+    ignore_requested,
+):
+    """Handle removal notification by removing the request objects."""
+
+    from .inventory import RootsNotFound, StuckInventoryException
+    from .operations import MaskingRequestNotFound, RemoverError
+    from .recovery_bundle import ContentDataNotFound, SecretSharing
+
+    remover = get_remover(ctx, require_masking_admin=True)
+
+    try:
+        secret_sharing = SecretSharing.from_dict(
+            ctx.obj["config"]["recovery_bundles"]["secret_sharing"]
+        )
+    except ValueError as e:
+        raise click.ClickException(f"Wrong secret sharing configuration: {e.args[0]}")
+
+    try:
+        p = pathlib.Path(recovery_bundle)
+        p.touch(exist_ok=False)
+        p.unlink()
+    except FileExistsError:
+        raise click.ClickException(f"File “{recovery_bundle}” already exists")
+    except PermissionError:
+        raise click.ClickException(f"Permission denied: “{recovery_bundle}”")
+
+    try:
+        remover.handle_removal_notification_with_removal(
+            notification_removal_identifier=removal_identifier,
+            secret_sharing=secret_sharing,
+            recovery_bundle_path=recovery_bundle,
+            ignore_requested=ignore_requested or [],
+            allow_empty_content_objects=allow_empty_content_objects,
+        )
+    except MaskingRequestNotFound as e:
+        click.secho(
+            f"Masking request “{e.masking_request_slug}” has not been found.",
+            err=True,
+            fg="red",
+        )
+        click.secho(
+            f"Please double-check that “{removal_identifier}” is the identifier of "
+            "the notification. Otherwise, there probably was an error with the "
+            "processing of the notification."
+        )
+        ctx.exit(1)
+    except RootsNotFound:
+        # handle_removal_notification_with_removal() has already
+        # displayed the missing objects
+        click.secho(
+            "You might want to use “--ignore-requested=https://…” "
+            "to specify which requested object should be ignored.",
+            err=True,
+            fg="yellow",
+            bold="True",
+        )
+        ctx.exit(1)
+    except StuckInventoryException as e:
+        click.secho(
+            "Inventory phase got stuck. "
+            "Unable to learn the complete set of what these objects reference:",
+            err=True,
+            fg="red",
+            bold=True,
+        )
+        click.secho("\n".join(f"- {swhid}" for swhid in e.swhids), err=True, fg="red")
+        ctx.exit(1)
+    except ContentDataNotFound as e:
+        click.secho(
+            f"Content “{e.swhid}” exists, but its data was not found.",
+            err=True,
+            fg="red",
+            bold=True,
+        )
+        click.secho(
+            "Consider using `--allow-empty-content-objects` but only "
+            "if the above is expected.",
+            err=True,
+            fg="yellow",
+        )
+        ctx.exit(1)
+    except RemoverError:
+        # Showing the exception and rolling back has been handled by
+        # handle_removal_notification_with_removal()
+        ctx.exit(1)
+    except Exception as e:
+        raise e
+
+
+@handle_removal_notification_cli_group.command(name="restrict-permanently")
+@click.argument(
+    "removal-identifier",
+    required=True,
+)
+@click.pass_context
+def handle_removal_notification_with_permanent_restriction(
+    ctx,
+    removal_identifier,
+):
+    """Handle removal notification by permanently restricting access
+    to objects removed from the main archive."""
+
+    from swh.storage.proxies.masking.db import MaskedState
+
+    from .operations import MaskingRequestNotFound
+
+    remover = get_remover(ctx, require_masking_admin=True)
+
+    try:
+        remover.handle_removal_notification_by_changing_masked_status(
+            notification_removal_identifier=removal_identifier,
+            masked_state=MaskedState.RESTRICTED,
+        )
+    except MaskingRequestNotFound as e:
+        click.secho(
+            f"Masking request “{e.masking_request_slug}” has not been found.",
+            err=True,
+            fg="red",
+        )
+        click.secho(
+            f"Please double-check that “{removal_identifier}” is the identifier of "
+            "the notification. Otherwise, there probably was an error with the "
+            "processing of the notification."
+        )
+        ctx.exit(1)
+    click.secho(
+        f"Removal notification “{removal_identifier}” handled by "
+        "permanently restricting access to the objects removed from the main archive.",
+        fg="green",
+        bold=True,
+    )
+
+
+@handle_removal_notification_cli_group.command(name="dismiss")
+@click.argument(
+    "removal-identifier",
+    required=True,
+)
+@click.pass_context
+def handle_removal_notification_with_dismissal(
+    ctx,
+    removal_identifier,
+):
+    """Handle removal notification by making the objects removed from the
+    main archive visible again."""
+
+    from swh.storage.proxies.masking.db import MaskedState
+
+    from .operations import MaskingRequestNotFound
+
+    remover = get_remover(ctx, require_masking_admin=True)
+
+    try:
+        remover.handle_removal_notification_by_changing_masked_status(
+            notification_removal_identifier=removal_identifier,
+            masked_state=MaskedState.VISIBLE,
+        )
+    except MaskingRequestNotFound as e:
+        click.secho(
+            f"Masking request “{e.masking_request_slug}” has not been found.",
+            err=True,
+            fg="red",
+        )
+        click.secho(
+            f"Please double-check that “{removal_identifier}” is the identifier of "
+            "the notification. Otherwise, there probably was an error with the "
+            "processing of the notification."
+        )
+        ctx.exit(1)
+    click.secho(
+        f"Removal notification “{removal_identifier}” has been dismissed: "
+        "objects removed from the main archive are now visible again.",
+        fg="green",
+        bold=True,
+    )

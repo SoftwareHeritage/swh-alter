@@ -16,7 +16,9 @@ from click.testing import CliRunner
 import pytest
 import yaml
 
+from swh.model.model import Origin
 from swh.model.swhids import ExtendedSWHID
+from swh.storage.proxies.masking.db import MaskedState
 
 from ..cli import (
     alter_cli_group,
@@ -30,7 +32,7 @@ from ..cli import (
     rollover,
 )
 from ..inventory import RootsNotFound, StuckInventoryException
-from ..operations import Removable, Remover
+from ..operations import MaskingRequestNotFound, Removable, Remover, RemoverError
 from ..recovery_bundle import AgeSecretKey, ContentDataNotFound, age_decrypt
 from .conftest import (
     OBJECT_SECRET_KEY,
@@ -40,9 +42,9 @@ from .conftest import (
 DEFAULT_CONFIG = {
     "storage": {
         "cls": "memory",
-        "objstorage": {
-            "cls": "memory",
-        },
+        # "objstorage": {
+        #     "cls": "memory",
+        # },
     },
     "graph": {
         "url": "http://granet.internal.softwareheritage.org:5009/graph",
@@ -2376,3 +2378,613 @@ def test_cli_recovery_bundle_rollover_can_be_canceled(
     )
     assert result.exit_code != 0
     assert "Aborted" in result.output
+
+
+@pytest.fixture
+def mirror_notification_watcher_config_path(
+    tmp_path,
+    swh_storage_backend_config,
+    kafka_prefix,
+    kafka_server,
+    masking_db_postgresql_dsn,
+    smtpd,
+):
+    conf_path = tmp_path / "swh-config.yml"
+    conf_path.write_text(
+        textwrap.dedent(
+            f"""\
+        journal_client:
+          brokers: {kafka_server}
+          group_id: test watcher
+          prefix: {kafka_prefix}
+        storage:
+          {textwrap.indent(yaml.dump(swh_storage_backend_config), '          ').strip()}
+        masking_admin:
+          cls: postgresql
+          db: {masking_db_postgresql_dsn}
+        emails:
+          from: swh-mirror@example.org
+          recipients:
+          - one@example.org
+          - two@example.org
+        smtp:
+          host: {smtpd.hostname}
+          port: {smtpd.port}
+    """
+        )
+    )
+    yield str(conf_path)
+
+
+def test_cli_run_mirror_notification_watcher(
+    mocker,
+    caplog,
+    mirror_notification_watcher_config_path,
+    notification_journal_writer,
+    example_removal_notification,
+):
+    mocker.patch(
+        "swh.alter.mirror_notification_watcher.MirrorNotificationWatcher.process_messages",
+        side_effect=KeyboardInterrupt,
+    )
+
+    notification_journal_writer.write_additions(
+        "removal_notification", [example_removal_notification]
+    )
+
+    runner = CliRunner()
+    with caplog.at_level(logging.INFO):
+        result = runner.invoke(
+            alter_cli_group,
+            ["run-mirror-notification-watcher"],
+            env={"SWH_CONFIG_FILENAME": mirror_notification_watcher_config_path},
+            catch_exceptions=True,
+        )
+    assert result.exit_code == 0, result.output
+    assert "Watching notifications for mirrors…" in caplog.messages
+    assert "Done watching notifications for mirrors." in caplog.messages
+
+
+@pytest.fixture
+def handle_removal_notification_config(
+    mocker,
+    swh_storage_backend_config,
+    remove_config,
+    empty_graph_client,
+    masking_db_postgresql_dsn,
+):
+    config = remove_config
+    config["storage"] = swh_storage_backend_config
+    config["graph"] = {
+        # dummy address
+        "url": "http://192.88.99.1:1",
+        "timeout": 1,
+    }
+    mocker.patch(
+        "swh.graph.http_client.RemoteGraphClient",
+        new_collable=lambda *args, **kwargs: empty_graph_client,
+    )
+    config["restoration_storage"] = swh_storage_backend_config
+    config["masking_admin"] = {"db": masking_db_postgresql_dsn}
+    return config
+
+
+@pytest.fixture
+def handle_removal_notification_config_path(
+    tmp_path, handle_removal_notification_config
+):
+    config_path = tmp_path / "swh-config.yml"
+    config_path.write_text(yaml.dump(handle_removal_notification_config))
+    return str(config_path)
+
+
+def test_cli_handle_removal_notification_with_removal(
+    mocker,
+    tmp_path,
+    populated_masking_admin,
+    handle_removal_notification_config_path,
+    example_removal_notification_with_matching_hash,
+):
+    mock_handle_removal_notification_with_removal = mocker.patch(
+        "swh.alter.operations.Remover.handle_removal_notification_with_removal"
+    )
+    recovery_bundle_path = tmp_path / "test.swh-bundle"
+    removal_identifier = (
+        example_removal_notification_with_matching_hash.removal_identifier
+    )
+    runner = CliRunner()
+    result = runner.invoke(
+        alter_cli_group,
+        [
+            "handle-removal-notification",
+            "remove",
+            "--recovery-bundle",
+            str(recovery_bundle_path),
+            removal_identifier,
+        ],
+        env={"SWH_CONFIG_FILENAME": handle_removal_notification_config_path},
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.output
+    mock_handle_removal_notification_with_removal.assert_called_once_with(
+        notification_removal_identifier=example_removal_notification_with_matching_hash.removal_identifier,
+        secret_sharing=mocker.ANY,
+        recovery_bundle_path=str(recovery_bundle_path),
+        ignore_requested=[],
+        allow_empty_content_objects=False,
+    )
+
+
+def test_cli_handle_removal_notification_with_removal_masking_request_not_found(
+    tmp_path,
+    handle_removal_notification_config_path,
+):
+    recovery_bundle_path = tmp_path / "test.swh-bundle"
+    runner = CliRunner()
+    result = runner.invoke(
+        alter_cli_group,
+        [
+            "handle-removal-notification",
+            "remove",
+            "--recovery-bundle",
+            str(recovery_bundle_path),
+            "NON_EXISTING_MASKING_REQUEST",
+        ],
+        env={"SWH_CONFIG_FILENAME": handle_removal_notification_config_path},
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 1, result.output
+    assert (
+        "Masking request “removal-from-main-archive-NON_EXISTING_MASKING_REQUEST” "
+        "has not been found." in result.output
+    )
+    assert (
+        "Please double-check that “NON_EXISTING_MASKING_REQUEST” "
+        "is the identifier" in result.output
+    )
+
+
+def test_cli_handle_removal_notification_with_removal_recovery_bundle_exists(
+    tmp_path,
+    populated_masking_admin,
+    handle_removal_notification_config_path,
+    example_removal_notification_with_matching_hash,
+):
+    recovery_bundle_path = tmp_path / "test.swh-bundle"
+    # Create a file as the path for the recovery bundle
+    recovery_bundle_path.touch()
+    removal_identifier = (
+        example_removal_notification_with_matching_hash.removal_identifier
+    )
+    runner = CliRunner()
+    result = runner.invoke(
+        alter_cli_group,
+        [
+            "handle-removal-notification",
+            "remove",
+            "--recovery-bundle",
+            str(recovery_bundle_path),
+            removal_identifier,
+        ],
+        env={"SWH_CONFIG_FILENAME": handle_removal_notification_config_path},
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 1, result.output
+    assert "already exists" in result.output
+
+
+def test_cli_handle_removal_notification_with_removal_recovery_bundle_not_writable(
+    populated_masking_admin,
+    handle_removal_notification_config_path,
+    example_removal_notification_with_matching_hash,
+):
+    removal_identifier = (
+        example_removal_notification_with_matching_hash.removal_identifier
+    )
+    runner = CliRunner()
+    result = runner.invoke(
+        alter_cli_group,
+        [
+            "handle-removal-notification",
+            "remove",
+            "--recovery-bundle",
+            "/nonexistent",
+            removal_identifier,
+        ],
+        env={"SWH_CONFIG_FILENAME": handle_removal_notification_config_path},
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 1, result.output
+    assert "Permission denied" in result.output
+
+
+def test_cli_handle_removal_notification_with_removal_remover_error(
+    caplog,
+    mocker,
+    tmp_path,
+    populated_masking_admin,
+    sample_populated_storage_with_matching_hash,
+    handle_removal_notification_config_path,
+    example_removal_notification_with_matching_hash,
+):
+    caplog.set_level(logging.INFO)
+    mocker.patch(
+        "swh.alter.operations.Remover.remove",
+        side_effect=RemoverError("remove has failed"),
+    )
+    recovery_bundle_path = tmp_path / "test.swh-bundle"
+    removal_identifier = (
+        example_removal_notification_with_matching_hash.removal_identifier
+    )
+    runner = CliRunner()
+    result = runner.invoke(
+        alter_cli_group,
+        [
+            "handle-removal-notification",
+            "remove",
+            "--recovery-bundle",
+            str(recovery_bundle_path),
+            removal_identifier,
+        ],
+        env={"SWH_CONFIG_FILENAME": handle_removal_notification_config_path},
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 1, result.output
+    assert "remove has failed" in result.output
+    assert "Rolling back" in result.output
+
+
+def test_cli_handle_removal_notification_with_removal_requested_not_found(
+    caplog,
+    mocker,
+    tmp_path,
+    populated_masking_admin,
+    handle_removal_notification_config_path,
+    example_removal_notification_with_matching_hash,
+):
+    caplog.set_level(logging.INFO)
+    mocker.patch(
+        "swh.alter.operations.Remover.get_removable",
+        side_effect=RootsNotFound(
+            [
+                ExtendedSWHID.from_string(
+                    "swh:1:ori:33abd4b4c5db79c7387673f71302750fd73e0645"
+                )
+            ]
+        ),
+    )
+    recovery_bundle_path = tmp_path / "test.swh-bundle"
+    removal_identifier = (
+        example_removal_notification_with_matching_hash.removal_identifier
+    )
+    runner = CliRunner()
+    result = runner.invoke(
+        alter_cli_group,
+        [
+            "handle-removal-notification",
+            "remove",
+            "--recovery-bundle",
+            str(recovery_bundle_path),
+            removal_identifier,
+        ],
+        env={"SWH_CONFIG_FILENAME": handle_removal_notification_config_path},
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 1, result.output
+    assert (
+        "Some requested objects were not found:\n"
+        "- https://github.com/user1/repo1" in result.output
+    )
+    assert "You might want to use “--ignore-requested=" in result.output
+
+
+def test_cli_handle_removal_notification_with_removal_ignore_requested(
+    mocker,
+    tmp_path,
+    populated_masking_admin,
+    handle_removal_notification_config_path,
+    example_removal_notification_with_matching_hash,
+):
+    mock_handle_removal_notification_with_removal = mocker.patch(
+        "swh.alter.operations.Remover.handle_removal_notification_with_removal"
+    )
+    recovery_bundle_path = tmp_path / "test.swh-bundle"
+    removal_identifier = (
+        example_removal_notification_with_matching_hash.removal_identifier
+    )
+    runner = CliRunner()
+    result = runner.invoke(
+        alter_cli_group,
+        [
+            "handle-removal-notification",
+            "remove",
+            "--recovery-bundle",
+            str(recovery_bundle_path),
+            "--ignore-requested=https://github.com/user1/repo1",
+            "--ignore-requested=swh:1:ori:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            removal_identifier,
+        ],
+        env={"SWH_CONFIG_FILENAME": handle_removal_notification_config_path},
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.output
+    mock_handle_removal_notification_with_removal.assert_called_once_with(
+        notification_removal_identifier=example_removal_notification_with_matching_hash.removal_identifier,
+        secret_sharing=mocker.ANY,
+        recovery_bundle_path=str(recovery_bundle_path),
+        allow_empty_content_objects=False,
+        ignore_requested=(
+            Origin(url="https://github.com/user1/repo1"),
+            ExtendedSWHID.from_string(
+                "swh:1:ori:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ),
+        ),
+    )
+
+
+def test_cli_handle_removal_notification_with_removal_inventory_stuck(
+    caplog,
+    mocker,
+    tmp_path,
+    populated_masking_admin,
+    handle_removal_notification_config_path,
+    example_removal_notification_with_matching_hash,
+):
+    caplog.set_level(logging.INFO)
+    mocker.patch(
+        "swh.alter.operations.Remover.get_removable",
+        side_effect=StuckInventoryException(
+            [
+                ExtendedSWHID.from_string(
+                    "swh:1:ori:33abd4b4c5db79c7387673f71302750fd73e0645"
+                )
+            ]
+        ),
+    )
+    recovery_bundle_path = tmp_path / "test.swh-bundle"
+    removal_identifier = (
+        example_removal_notification_with_matching_hash.removal_identifier
+    )
+    runner = CliRunner()
+    result = runner.invoke(
+        alter_cli_group,
+        [
+            "handle-removal-notification",
+            "remove",
+            "--recovery-bundle",
+            str(recovery_bundle_path),
+            removal_identifier,
+        ],
+        env={"SWH_CONFIG_FILENAME": handle_removal_notification_config_path},
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 1, result.output
+    assert "Inventory phase got stuck" in result.output
+    assert (
+        "Unable to learn the complete set of what these objects reference:\n"
+        "- swh:1:ori:33abd4b4c5db79c7387673f71302750fd73e0645" in result.output
+    )
+
+
+def test_cli_handle_removal_notification_with_removal_content_data_not_found(
+    caplog,
+    mocker,
+    tmp_path,
+    populated_masking_admin,
+    sample_populated_storage_with_matching_hash,
+    handle_removal_notification_config_path,
+    example_removal_notification_with_matching_hash,
+):
+    caplog.set_level(logging.INFO)
+    mocker.patch(
+        "swh.alter.operations.Remover.create_recovery_bundle",
+        side_effect=ContentDataNotFound(
+            ExtendedSWHID.from_string(
+                "swh:1:rev:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            )
+        ),
+    )
+    recovery_bundle_path = tmp_path / "test.swh-bundle"
+    removal_identifier = (
+        example_removal_notification_with_matching_hash.removal_identifier
+    )
+    runner = CliRunner()
+    result = runner.invoke(
+        alter_cli_group,
+        [
+            "handle-removal-notification",
+            "remove",
+            "--recovery-bundle",
+            str(recovery_bundle_path),
+            removal_identifier,
+        ],
+        env={"SWH_CONFIG_FILENAME": handle_removal_notification_config_path},
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 1, result.output
+    assert (
+        "Content “swh:1:rev:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa” exists, "
+        "but its data was not found" in result.output
+    )
+    assert "--allow-empty-content-objects" in result.output
+
+
+def test_cli_handle_removal_notification_with_removal_allow_empty_content_objects(
+    caplog,
+    mocker,
+    tmp_path,
+    populated_masking_admin,
+    sample_populated_storage_with_matching_hash,
+    handle_removal_notification_config_path,
+    example_removal_notification_with_matching_hash,
+):
+    caplog.set_level(logging.INFO)
+    mocker.patch("swh.alter.operations.Remover.remove")
+    mocker.patch(
+        "swh.alter.operations.Remover.get_removable",
+        return_value=Removable(
+            removable_swhids=[
+                ExtendedSWHID.from_string(
+                    "swh:1:cnt:c932c7649c6dfa4b82327d121215116909eb3bea"
+                )
+            ],
+            referencing=[],
+        ),
+    )
+    recovery_bundle_path = tmp_path / "test.swh-bundle"
+    removal_identifier = (
+        example_removal_notification_with_matching_hash.removal_identifier
+    )
+    runner = CliRunner()
+    result = runner.invoke(
+        alter_cli_group,
+        [
+            "handle-removal-notification",
+            "remove",
+            "--allow-empty-content-objects",
+            "--recovery-bundle",
+            str(recovery_bundle_path),
+            removal_identifier,
+        ],
+        env={"SWH_CONFIG_FILENAME": handle_removal_notification_config_path},
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.output
+    assert (
+        "No data available for swh:1:cnt:c932c7649c6dfa4b82327d121215116909eb3bea. "
+        "Recording empty Content object as requested." in result.output
+    )
+
+
+def test_cli_handle_removal_notification_with_permanent_restriction(
+    mocker,
+    handle_removal_notification_config_path,
+    populated_masking_admin,
+    example_removal_notification_with_matching_hash,
+):
+    mock = mocker.patch(
+        "swh.alter.operations.Remover.handle_removal_notification_by_changing_masked_status"
+    )
+    removal_identifier = (
+        example_removal_notification_with_matching_hash.removal_identifier
+    )
+    runner = CliRunner()
+    result = runner.invoke(
+        alter_cli_group,
+        [
+            "handle-removal-notification",
+            "restrict-permanently",
+            removal_identifier,
+        ],
+        env={"SWH_CONFIG_FILENAME": handle_removal_notification_config_path},
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.output
+    assert (
+        "Removal notification “example-removal-notification” handled by "
+        "permanently restricting access" in result.output
+    )
+    mock.assert_called_once_with(
+        notification_removal_identifier=removal_identifier,
+        masked_state=MaskedState.RESTRICTED,
+    )
+
+
+def test_cli_handle_removal_notification_with_permanent_restriction_masking_request_not_found(
+    mocker,
+    handle_removal_notification_config_path,
+):
+    masking_request_slug = "NON_EXISTING_MASKING_REQUEST"
+    mocker.patch(
+        "swh.alter.operations.Remover.handle_removal_notification_by_changing_masked_status",
+        side_effect=MaskingRequestNotFound(
+            f"removal-from-main-archive-{masking_request_slug}"
+        ),
+    )
+    runner = CliRunner()
+    result = runner.invoke(
+        alter_cli_group,
+        [
+            "handle-removal-notification",
+            "restrict-permanently",
+            masking_request_slug,
+        ],
+        env={"SWH_CONFIG_FILENAME": handle_removal_notification_config_path},
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 1, result.output
+    assert (
+        "Masking request “removal-from-main-archive-NON_EXISTING_MASKING_REQUEST” "
+        "has not been found." in result.output
+    )
+    assert (
+        "Please double-check that “NON_EXISTING_MASKING_REQUEST” "
+        "is the identifier" in result.output
+    )
+
+
+def test_cli_handle_removal_notification_with_dismissal(
+    mocker,
+    handle_removal_notification_config_path,
+    populated_masking_admin,
+    example_removal_notification_with_matching_hash,
+):
+    mock = mocker.patch(
+        "swh.alter.operations.Remover.handle_removal_notification_by_changing_masked_status"
+    )
+    removal_identifier = (
+        example_removal_notification_with_matching_hash.removal_identifier
+    )
+    runner = CliRunner()
+    result = runner.invoke(
+        alter_cli_group,
+        [
+            "handle-removal-notification",
+            "dismiss",
+            removal_identifier,
+        ],
+        env={"SWH_CONFIG_FILENAME": handle_removal_notification_config_path},
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.output
+    assert (
+        "Removal notification “example-removal-notification” has been dismissed:"
+        in result.output
+    )
+    mock.assert_called_once_with(
+        notification_removal_identifier=removal_identifier,
+        masked_state=MaskedState.VISIBLE,
+    )
+
+
+def test_cli_handle_removal_notification_with_dismissal_masking_request_not_found(
+    mocker,
+    handle_removal_notification_config_path,
+):
+    masking_request_slug = "NON_EXISTING_MASKING_REQUEST"
+    mocker.patch(
+        "swh.alter.operations.Remover.handle_removal_notification_by_changing_masked_status",
+        side_effect=MaskingRequestNotFound(
+            f"removal-from-main-archive-{masking_request_slug}"
+        ),
+    )
+    runner = CliRunner()
+    result = runner.invoke(
+        alter_cli_group,
+        [
+            "handle-removal-notification",
+            "dismiss",
+            "NON_EXISTING_MASKING_REQUEST",
+        ],
+        env={"SWH_CONFIG_FILENAME": handle_removal_notification_config_path},
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 1, result.output
+    assert (
+        "Masking request “removal-from-main-archive-NON_EXISTING_MASKING_REQUEST” "
+        "has not been found." in result.output
+    )
+    assert (
+        "Please double-check that “NON_EXISTING_MASKING_REQUEST” "
+        "is the identifier" in result.output
+    )

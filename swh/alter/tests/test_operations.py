@@ -6,6 +6,7 @@
 from datetime import datetime, timedelta, timezone
 import itertools
 import logging
+import operator
 import shutil
 import subprocess
 import textwrap
@@ -15,13 +16,15 @@ from unittest.mock import call
 import pytest
 import yaml
 
-from swh.model.model import BaseModel
+from swh.model.model import BaseModel, Origin
 from swh.model.swhids import CoreSWHID, ExtendedObjectType, ExtendedSWHID
 from swh.objstorage.interface import ObjStorageInterface
 from swh.search.interface import SearchInterface
 from swh.storage.interface import StorageInterface
+from swh.storage.proxies.masking.db import MaskedState
 
-from ..operations import Removable, Remover, RemoverError
+from ..mirror_notification_watcher import MASKING_REQUEST_IDENTIFIER_PREFIX
+from ..operations import MaskingRequestNotFound, Removable, Remover, RemoverError
 from ..recovery_bundle import SecretSharing
 from .conftest import (
     OBJECT_SECRET_KEY,
@@ -850,3 +853,176 @@ def test_remover_register_objects_from_bundle(
         ]
     )
     assert obj_unique_keys == expected_unique_keys
+
+
+def test_remover_handle_removal_notification_with_removal(
+    mocker,
+    tmp_path,
+    sample_populated_storage_with_matching_hash,
+    empty_graph_client,
+    populated_masking_admin,
+    example_removal_notification_with_matching_hash,
+    secret_sharing_conf,
+):
+    storage = sample_populated_storage_with_matching_hash
+    skipped_content_swhid = ExtendedSWHID.from_string(
+        # SkippedContent
+        "swh:1:cnt:33e45d56f88993aae6a0198013efa80716fd8920"
+    )
+    removable_swhids = example_removal_notification_with_matching_hash.removed_objects
+    removable_swhids.remove(skipped_content_swhid)
+
+    referencing = [
+        ExtendedSWHID.from_string(s)
+        for s in (
+            "swh:1:cnt:36fade77193cb6d2bd826161a0979d64c28ab4fa",
+            "swh:1:dir:8505808532953da7d2581741f01b29c04b1cb9ab",
+        )
+    ]
+
+    masking_admin = populated_masking_admin
+    notification_removal_identifier = (
+        example_removal_notification_with_matching_hash.removal_identifier
+    )
+    recovery_bundle_path = tmp_path / "test.swh-bundle"
+    remover = Remover(
+        storage=storage,
+        restoration_storage=storage,
+        graph_client=empty_graph_client,
+        masking_admin=masking_admin,
+    )
+    mock_get_removable = mocker.patch.object(
+        remover,
+        "get_removable",
+        return_value=Removable(
+            removable_swhids=removable_swhids, referencing=referencing
+        ),
+    )
+    mocker.patch.object(remover, "have_new_references", return_value=False)
+
+    remover.handle_removal_notification_with_removal(
+        notification_removal_identifier=notification_removal_identifier,
+        secret_sharing=SecretSharing.from_dict(secret_sharing_conf),
+        recovery_bundle_path=recovery_bundle_path,
+        ignore_requested=[
+            Origin(url="https://github.com/user1/repo1"),
+            ExtendedSWHID.from_string(
+                "swh:1:ori:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ),
+        ],
+    )
+
+    mock_get_removable.assert_called_once_with(
+        [
+            ExtendedSWHID.from_string(
+                "swh:1:ori:9147ab9c9287940d4fdbe95d8780664d7ad2dfc0"
+            )
+        ]
+    )
+
+    with masking_admin.conn:
+        masking_request = masking_admin.find_request(
+            f"{MASKING_REQUEST_IDENTIFIER_PREFIX}{notification_removal_identifier}"
+        )
+        masking_states = masking_admin.get_states_for_request(masking_request.id)
+        assert masking_states == {
+            swhid: MaskedState.VISIBLE for swhid in removable_swhids
+        } | {skipped_content_swhid: MaskedState.DECISION_PENDING}
+        history = masking_admin.get_history(masking_request.id)
+        assert list(sorted(history, key=operator.attrgetter("date")))[
+            -1
+        ].message == textwrap.dedent(
+            """\
+            Made 17 objects visible again after removal.
+
+            Objects in state “decision pending” that were not removed:
+            - swh:1:cnt:33e45d56f88993aae6a0198013efa80716fd8920"""
+        )
+
+
+def test_remover_handle_removal_notification_with_removal_masked_request_not_found(
+    tmp_path,
+    sample_populated_storage_with_matching_hash,
+    empty_graph_client,
+    populated_masking_admin,
+    example_removal_notification_with_matching_hash,
+    secret_sharing_conf,
+):
+    storage = sample_populated_storage_with_matching_hash
+    remover = Remover(
+        storage=storage,
+        restoration_storage=storage,
+        graph_client=empty_graph_client,
+        masking_admin=populated_masking_admin,
+    )
+    recovery_bundle_path = tmp_path / "test.swh-bundle"
+    with pytest.raises(MaskingRequestNotFound, match="NON_EXISTENT"):
+        remover.handle_removal_notification_with_removal(
+            notification_removal_identifier="NON_EXISTENT",
+            secret_sharing=SecretSharing.from_dict(secret_sharing_conf),
+            recovery_bundle_path=recovery_bundle_path,
+        )
+
+
+@pytest.mark.parametrize(
+    "masked_status, expected_message",
+    [
+        (MaskedState.RESTRICTED, "Made 18 objects permanently restricted."),
+        (
+            MaskedState.DECISION_PENDING,
+            "Made 18 objects restricted until a decision is made.",
+        ),
+        (MaskedState.VISIBLE, "Made 18 objects visible again."),
+    ],
+)
+def test_handle_removal_notification_by_changing_masked_status_to_restricted(
+    masked_status,
+    expected_message,
+    sample_populated_storage_with_matching_hash,
+    empty_graph_client,
+    populated_masking_admin,
+    example_removal_notification_with_matching_hash,
+):
+    storage = sample_populated_storage_with_matching_hash
+    masking_admin = populated_masking_admin
+    remover = Remover(
+        storage=storage,
+        restoration_storage=storage,
+        graph_client=empty_graph_client,
+        masking_admin=masking_admin,
+    )
+    notification_removal_identifier = (
+        example_removal_notification_with_matching_hash.removal_identifier
+    )
+    remover.handle_removal_notification_by_changing_masked_status(
+        notification_removal_identifier=notification_removal_identifier,
+        masked_state=masked_status,
+    )
+    with masking_admin.conn:
+        masking_request = masking_admin.find_request(
+            f"{MASKING_REQUEST_IDENTIFIER_PREFIX}{notification_removal_identifier}"
+        )
+        history = masking_admin.get_history(masking_request.id)
+        assert (
+            list(sorted(history, key=operator.attrgetter("date")))[-1].message
+            == expected_message
+        )
+
+
+def test_handle_removal_notification_by_changing_masked_status_masked_request_not_found(
+    sample_populated_storage_with_matching_hash,
+    empty_graph_client,
+    populated_masking_admin,
+):
+    storage = sample_populated_storage_with_matching_hash
+    remover = Remover(
+        storage=storage,
+        restoration_storage=storage,
+        graph_client=empty_graph_client,
+        masking_admin=populated_masking_admin,
+    )
+    with pytest.raises(MaskingRequestNotFound, match="NON_EXISTENT"):
+        remover.handle_removal_notification_by_changing_masked_status(
+            notification_removal_identifier="NON_EXISTENT",
+            masked_state=MaskedState.RESTRICTED,
+        )

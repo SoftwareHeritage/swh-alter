@@ -4,12 +4,17 @@
 # See top-level LICENSE file for more information
 
 import datetime
+from functools import partial
 import os
 from typing import Iterator
 
 import pytest
+from pytest_postgresql import factories
 
+from swh.core.db.db_utils import initialize_database_for_module
 import swh.graph.example_dataset as graph_dataset
+from swh.journal.client import get_journal_client
+from swh.journal.writer import get_journal_writer
 from swh.model.model import (
     Content,
     Directory,
@@ -26,8 +31,12 @@ from swh.model.model import (
 )
 from swh.model.swhids import CoreSWHID, ExtendedObjectType, ExtendedSWHID
 from swh.model.swhids import ObjectType as CoreSWHIDObjectType
+from swh.storage.interface import StorageInterface
+from swh.storage.proxies.masking.db import MaskingAdmin
 
 from ..inventory import InventorySubgraph
+from ..mirror_notification_watcher import MirrorNotificationWatcher
+from ..notifications import RemovalNotification
 from ..recovery_bundle import AgeSecretKey, Manifest, RecoveryBundle
 from ..subgraph import Subgraph
 
@@ -753,3 +762,146 @@ def sample_recovery_bundle(sample_recovery_bundle_path):
     return RecoveryBundle(
         sample_recovery_bundle_path, object_decryption_key_provider_for_sample
     )
+
+
+#
+# Removal notifications
+# =====================
+
+masking_db_postgresql_proc = factories.postgresql_proc(
+    load=[
+        partial(
+            initialize_database_for_module,
+            modname="storage.proxies.masking",
+            version=MaskingAdmin.current_version,
+        ),
+    ],
+)
+
+
+masking_db_postgresql = factories.postgresql(
+    "masking_db_postgresql_proc",
+)
+
+
+@pytest.fixture
+def masking_db_postgresql_dsn(masking_db_postgresql):
+    return masking_db_postgresql.info.dsn
+
+
+@pytest.fixture
+def object_types():
+    return ["removal_notification"]
+
+
+@pytest.fixture
+def example_watcher(
+    sample_populated_storage: StorageInterface,
+    kafka_prefix: str,
+    kafka_server: str,
+    masking_db_postgresql_dsn: str,
+    smtpd,
+) -> MirrorNotificationWatcher:
+    return MirrorNotificationWatcher(
+        storage=sample_populated_storage,
+        journal_client=get_journal_client(
+            cls="kafka",
+            brokers=[kafka_server],
+            prefix=kafka_prefix,
+            group_id="test watcher",
+            on_eof="stop",
+            batch_size=1,
+            object_types=["removal_notification"],
+        ),
+        masking_admin_dsn=masking_db_postgresql_dsn,
+        emails_from="swh-mirror@example.org",
+        emails_recipients=["one@example.org", "two@example.org"],
+        smtp_host=smtpd.hostname,
+        smtp_port=smtpd.port,
+    )
+
+
+@pytest.fixture
+def example_removal_notification():
+    return RemovalNotification(
+        removal_identifier="example-removal-notification",
+        reason="We need to test stuff",
+        requested=[
+            Origin(url="https://example.com/swh/graph"),
+            ExtendedSWHID.from_string(
+                "swh:1:snp:0000000000000000000000000000000000000022"
+            ),
+        ],
+        removed_objects=[
+            ExtendedSWHID.from_string(s)
+            for s in (
+                "swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165",
+                "swh:1:snp:0000000000000000000000000000000000000022",
+                "swh:1:rel:0000000000000000000000000000000000000021",
+                "swh:1:rev:0000000000000000000000000000000000000018",
+                "swh:1:dir:0000000000000000000000000000000000000017",
+                "swh:1:cnt:0000000000000000000000000000000000000015",
+                "swh:1:cnt:0000000000000000000000000000000000000014",
+                "swh:1:emd:101d70c3574c1e4b730d7ba8e83a4bdadc8691cb",
+            )
+        ],
+    )
+
+
+@pytest.fixture
+def example_removal_notification_with_matching_hash():
+    return RemovalNotification(
+        removal_identifier="example-removal-notification",
+        reason="We need to test stuff",
+        requested=[
+            Origin(url="https://github.com/user1/repo1"),
+            # https://github.com/user2/repo1
+            ExtendedSWHID.from_string(
+                "swh:1:ori:9147ab9c9287940d4fdbe95d8780664d7ad2dfc0"
+            ),
+        ],
+        removed_objects=[
+            ExtendedSWHID.from_string(s)
+            for s in (
+                "swh:1:ori:33abd4b4c5db79c7387673f71302750fd73e0645",
+                "swh:1:ori:9147ab9c9287940d4fdbe95d8780664d7ad2dfc0",
+                "swh:1:snp:9b922e6d8d5b803c1582aabe5525b7b91150788e",
+                "swh:1:snp:db99fda25b43dc5cd90625ee4b0744751799c917",
+                "swh:1:rev:01a7114f36fddd5ef2511b2cadda237a68adbb12",
+                "swh:1:rev:a646dd94c912829659b22a1e7e143d2fa5ebde1b",
+                "swh:1:rel:db81a26783a3f4a9db07b4759ffc37621f159bb2",
+                "swh:1:rel:f7f222093a18ec60d781070abec4a630c850b837",
+                "swh:1:dir:4b825dc642cb6eb9a060e54bf8d69288fbee4904",
+                "swh:1:dir:5256e856a0a0898966d6ba14feb4388b8b82d302",
+                "swh:1:dir:afa0105cfcaa14fdbacee344e96659170bb1bda5",
+                "swh:1:cnt:33e45d56f88993aae6a0198013efa80716fd8920",
+                "swh:1:cnt:c932c7649c6dfa4b82327d121215116909eb3bea",
+                "swh:1:cnt:d81cc0710eb6cf9efd5b920a8453e1e07157b6cd",
+                "swh:1:emd:101d70c3574c1e4b730d7ba8e83a4bdadc8691cb",
+                "swh:1:emd:ef3b0865c7a05f79772a3189ddfc8515ec3e1844",
+                "swh:1:emd:43dad4d96edf2fb4f77f0dbf72113b8fe8b5b664",
+                "swh:1:emd:9cafd9348f3a7729c2ef0b9b149ba421589427f0",
+            )
+        ],
+    )
+
+
+@pytest.fixture
+def notification_journal_writer(kafka_prefix, kafka_server):
+    return get_journal_writer(
+        "kafka", brokers=[kafka_server], prefix=kafka_prefix, client_id="test producer"
+    )
+
+
+@pytest.fixture
+def populated_masking_admin(
+    masking_db_postgresql_dsn: str,
+    example_watcher: MirrorNotificationWatcher,
+    example_removal_notification_with_matching_hash: RemovalNotification,
+) -> MaskingAdmin:
+    masking_admin = MaskingAdmin.connect(masking_db_postgresql_dsn)
+    masking_admin.conn.autocommit = False
+    example_watcher.process_removal_notification(
+        example_removal_notification_with_matching_hash
+    )
+    return masking_admin
