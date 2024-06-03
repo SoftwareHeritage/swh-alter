@@ -8,6 +8,7 @@ import contextlib
 from datetime import datetime, timezone
 import itertools
 import logging
+import operator
 import os
 from pathlib import Path
 import re
@@ -46,15 +47,18 @@ from swh.model.model import (
     BaseModel,
     Content,
     Directory,
+    ExtID,
     Origin,
     OriginVisit,
     OriginVisitStatus,
+    RawExtrinsicMetadata,
     Release,
     Revision,
     SkippedContent,
     Snapshot,
 )
 from swh.model.swhids import ExtendedObjectType, ExtendedSWHID
+from swh.model.swhids import ObjectType as CoreSWHIDObjectType
 import swh.storage.algos.directory
 import swh.storage.algos.snapshot
 from swh.storage.interface import HashDict, StorageInterface
@@ -119,7 +123,7 @@ class Manifest:
         validator=[
             attrs.validators.instance_of(int),
             attrs.validators.ge(1),
-            attrs.validators.le(1),
+            attrs.validators.le(2),
         ]
     )
     removal_identifier: str = attrs.field(validator=[attrs.validators.instance_of(str)])
@@ -480,6 +484,10 @@ class RecoveryBundle:
             self._object_decryption_key_provider = failing_provider
 
     @property
+    def version(self) -> int:
+        return self._manifest.version
+
+    @property
     def removal_identifier(self) -> str:
         return self._manifest.removal_identifier
 
@@ -542,7 +550,9 @@ class RecoveryBundle:
     ):
         if name_filter is None:
             name_filter = lambda name: True  # noqa: E731
-        for zip_info in self._zip.infolist():
+        for zip_info in sorted(
+            self._zip.infolist(), key=operator.attrgetter("filename")
+        ):
             if not zip_info.filename.startswith(f"{dir}/"):
                 continue
             if zip_info.is_dir():
@@ -589,6 +599,16 @@ class RecoveryBundle:
             lambda name: name.startswith(basename),
         )
 
+    def raw_extrinsic_metadata(self) -> Iterator[RawExtrinsicMetadata]:
+        if self.version < 2:
+            return
+        yield from self._objects("raw_extrinsic_metadata", RawExtrinsicMetadata)
+
+    def extids(self) -> Iterator[ExtID]:
+        if self.version < 2:
+            return
+        yield from self._objects("extids", ExtID)
+
     def restore(
         self, storage: StorageInterface, progressbar: ProgressBarInit = no_progressbar
     ) -> Dict[str, int]:
@@ -608,7 +628,7 @@ class RecoveryBundle:
                 origin_result["origin_visit_status:add"] += len(origin_visit_statuses)
             return dict(origin_result)
 
-        STEPS: List[
+        steps: List[
             Tuple[Callable[[List[Any]], Dict[str, int]], Callable[[], Iterator[Any]]]
         ] = [
             (storage.content_add, self.contents),
@@ -619,32 +639,65 @@ class RecoveryBundle:
             (storage.snapshot_add, self.snapshots),
             (_origin_add, self.origins),
         ]
+        if self.version >= 2:
+            steps.extend(
+                [
+                    (storage.raw_extrinsic_metadata_add, self.raw_extrinsic_metadata),
+                    (storage.extid_add, self.extids),
+                ]
+            )
 
         result: collections.Counter[str] = collections.Counter()
         bar: ProgressBar[int]
         with progressbar(
             length=len(self.swhids), label="Restoring recovery bundle…"
         ) as bar:
-            for add, source in STEPS:
+            for add, source in steps:
                 for chunk_it in grouper(source(), RECOVERY_BUNDLE_RESTORE_CHUNK_SIZE):
                     chunk = list(chunk_it)
                     result += add(chunk)
                     bar.update(n_steps=len(chunk))
 
-        logger.info(
-            "Restoration complete. Results: \n"
-            "- Content objects added: %(content:add)s\n"
-            "- Total bytes added to objstorage: %(content:add:bytes)s\n"
-            "- SkippedContent objects added: %(skipped_content:add)s\n"
-            "- Directory objects added: %(directory:add)s\n"
-            "- Revision objects added: %(revision:add)s\n"
-            "- Release objects added: %(release:add)s\n"
-            "- Snapshot objects added: %(snapshot:add)s\n"
-            "- Origin objects added: %(origin:add)s\n"
-            "- OriginVisit objects added: %(origin_visit:add)s\n"
-            "- OriginVisitStatus objects added: %(origin_visit_status:add)s\n",
-            result,
-        )
+        log_lines = [
+            "Restoration complete. Results: ",
+            "- Content objects added: %(content:add)s",
+            "- Total bytes added to objstorage: %(content:add:bytes)s",
+            "- SkippedContent objects added: %(skipped_content:add)s",
+            "- Directory objects added: %(directory:add)s",
+            "- Revision objects added: %(revision:add)s",
+            "- Release objects added: %(release:add)s",
+            "- Snapshot objects added: %(snapshot:add)s",
+            "- Origin objects added: %(origin:add)s",
+            "- OriginVisit objects added: %(origin_visit:add)s",
+            "- OriginVisitStatus objects added: %(origin_visit_status:add)s",
+        ]
+        if "ori_metadata:add" in result:
+            log_lines.append(
+                "- RawExtrinsicMetadata objects for origins added: %(ori_metadata:add)s"
+            )
+        if "snp_metadata:add" in result:
+            log_lines.append(
+                "- RawExtrinsicMetadata objects for snapshots added: %(snp_metadata:add)s"
+            )
+        if "rev_metadata:add" in result:
+            log_lines.append(
+                "- RawExtrinsicMetadata objects for revisions added: %(rev_metadata:add)s"
+            )
+        if "rel_metadata:add" in result:
+            log_lines.append(
+                "- RawExtrinsicMetadata objects for releases added: %(rel_metadata:add)s"
+            )
+        if "dir_metadata:add" in result:
+            log_lines.append(
+                "- RawExtrinsicMetadata objects for directories added: %(dir_metadata:add)s"
+            )
+        if "cnt_metadata:add" in result:
+            log_lines.append(
+                "- RawExtrinsicMetadata objects for contents added: %(cnt_metadata:add)s"
+            )
+        if "extid:add" in result:
+            log_lines.append("- ExtID objects added: %(extid:add)s")
+        logger.info("\n".join(log_lines), result)
         return dict(result)
 
     def rollover(self, secret_sharing: SecretSharing):
@@ -762,7 +815,7 @@ class RecoveryBundleCreator:
     def __enter__(self) -> Self:
         self._zip = ZipFile(self._path, "x")
         self._manifest = Manifest(
-            version=1,
+            version=2,
             removal_identifier=self._removal_identifier,
             created=self._created,
             swhids=[],
@@ -808,7 +861,7 @@ class RecoveryBundleCreator:
 
     def _add_contents(
         self, content_swhids: List[ExtendedSWHID]
-    ) -> Iterable[Content | SkippedContent]:
+    ) -> Iterable[Content | SkippedContent | ExtID]:
         assert all(
             swhid.object_type == ExtendedObjectType.CONTENT for swhid in content_swhids
         )
@@ -842,10 +895,13 @@ class RecoveryBundleCreator:
                     value_to_kafka(populated_content.to_dict()),
                 )
                 yield populated_content
+        yield from self._add_extids(
+            CoreSWHIDObjectType.CONTENT, [swhid.object_id for swhid in content_swhids]
+        )
 
     def _add_directories(
         self, directory_swhids: List[ExtendedSWHID]
-    ) -> Iterable[Directory]:
+    ) -> Iterable[Directory | ExtID]:
         assert all(
             swhid.object_type == ExtendedObjectType.DIRECTORY
             for swhid in directory_swhids
@@ -864,10 +920,14 @@ class RecoveryBundleCreator:
             # If it's corrupted we still should backup it anyway
             self._write(_swhid_to_arcname(swhid), value_to_kafka(directory.to_dict()))
             yield directory
+        yield from self._add_extids(
+            CoreSWHIDObjectType.DIRECTORY,
+            [swhid.object_id for swhid in directory_swhids],
+        )
 
     def _add_revisions(
         self, revision_swhids: List[ExtendedSWHID]
-    ) -> Iterator[Revision]:
+    ) -> Iterator[Revision | ExtID]:
         assert all(
             swhid.object_type == ExtendedObjectType.REVISION
             for swhid in revision_swhids
@@ -882,8 +942,13 @@ class RecoveryBundleCreator:
                 raise ValueError(f"Unable to find {swhid} in storage")
             self._write(_swhid_to_arcname(swhid), value_to_kafka(revision.to_dict()))
             yield revision
+        yield from self._add_extids(
+            CoreSWHIDObjectType.REVISION, [swhid.object_id for swhid in revision_swhids]
+        )
 
-    def _add_releases(self, release_swhids: List[ExtendedSWHID]) -> Iterator[Release]:
+    def _add_releases(
+        self, release_swhids: List[ExtendedSWHID]
+    ) -> Iterator[Release | ExtID]:
         assert all(
             swhid.object_type == ExtendedObjectType.RELEASE for swhid in release_swhids
         )
@@ -897,10 +962,13 @@ class RecoveryBundleCreator:
                 raise ValueError(f"Unable to find {swhid} in storage")
             self._write(_swhid_to_arcname(swhid), value_to_kafka(release.to_dict()))
             yield release
+        yield from self._add_extids(
+            CoreSWHIDObjectType.RELEASE, [swhid.object_id for swhid in release_swhids]
+        )
 
     def _add_snapshots(
         self, snapshot_swhids: List[ExtendedSWHID]
-    ) -> Iterator[Snapshot]:
+    ) -> Iterator[Snapshot | ExtID]:
         assert all(
             swhid.object_type == ExtendedObjectType.SNAPSHOT
             for swhid in snapshot_swhids
@@ -913,6 +981,9 @@ class RecoveryBundleCreator:
                 raise ValueError(f"Unable to find {swhid} in storage")
             self._write(_swhid_to_arcname(swhid), value_to_kafka(snapshot.to_dict()))
             yield snapshot
+        yield from self._add_extids(
+            CoreSWHIDObjectType.SNAPSHOT, [swhid.object_id for swhid in snapshot_swhids]
+        )
 
     def _add_origin_visit(self, basename: str, visit: OriginVisit):
         arcname = f"origin_visits/{basename}_" f"{visit.visit}.age"
@@ -954,6 +1025,44 @@ class RecoveryBundleCreator:
                     self._add_origin_visit_status(basename, origin_visit_status)
                     yield origin_visit_status
 
+    def _add_raw_extrinsic_metadata(
+        self, emd_swhids: List[ExtendedSWHID]
+    ) -> Iterator[RawExtrinsicMetadata]:
+        assert all(
+            swhid.object_type == ExtendedObjectType.RAW_EXTRINSIC_METADATA
+            for swhid in emd_swhids
+        )
+        emds = self._storage.raw_extrinsic_metadata_get_by_ids(
+            [swhid.object_id for swhid in emd_swhids]
+        )
+        missing_emd_swhids = set(emd_swhids) - {emd.swhid() for emd in emds}
+        if missing_emd_swhids:
+            raise ValueError(
+                f"Unable to retrieve {', '.join(str(swhid) for swhid in missing_emd_swhids)}"
+            )
+        # Here we do some tricks to 0-pad the index to the right size
+        # If we have 1234 RawExtrinsicMetadata objects, `len(str(len(emds)))``
+        # will be 4. We thus get `emd_index_format` to be`{:04d}`.
+        # Calling `emd_index_format.format(33)` results in `0033`.
+        emd_index_format = "{" f":0{len(str(len(emds)))}d" "}"
+        for emd_index, emd in enumerate(emds, start=1):
+            basename = str(emd.swhid()).replace(":", "_")
+            arcname = (
+                "raw_extrinsic_metadata/"
+                f"{emd_index_format.format(emd_index)}_{basename}.age"
+            )
+            self._write(arcname, value_to_kafka(emd.to_dict()))
+            yield emd
+
+    def _add_extids(
+        self, target_type: CoreSWHIDObjectType, target_ids: List[bytes]
+    ) -> Iterator[ExtID]:
+        for extid in self._storage.extid_get_from_target(target_type, target_ids):
+            assert extid.id, "id for ExtID should have been computed!"
+            arcname = f"extids/{extid.id.hex()}.age"
+            self._write(arcname, value_to_kafka(extid.to_dict()))
+            yield extid
+
     def backup_swhids(self, swhids: Iterable[ExtendedSWHID]) -> int:
         handlers: Dict[
             ExtendedObjectType,
@@ -965,6 +1074,7 @@ class RecoveryBundleCreator:
             ExtendedObjectType.RELEASE: self._add_releases,
             ExtendedObjectType.SNAPSHOT: self._add_snapshots,
             ExtendedObjectType.ORIGIN: self._add_origins,
+            ExtendedObjectType.RAW_EXTRINSIC_METADATA: self._add_raw_extrinsic_metadata,
         }
         count = 0
         for obj in iter_swhids_grouped_by_type(

@@ -8,6 +8,7 @@ import itertools
 import os
 import shutil
 
+import attr
 import pytest
 import yaml
 
@@ -95,7 +96,7 @@ def test_manifest_load_success_with_no_optionals(manifest_dict):
 @pytest.mark.parametrize(
     "invalid_manifest_dict",
     [
-        pytest.param({"version": 2}, id="invalid_version"),
+        pytest.param({"version": 42}, id="invalid_version"),
         pytest.param({"expire": "2024-06-18T13:12:42Z"}, id="str_instead_of_datetime"),
         pytest.param({"swhids": []}, id="empty_swhids"),
         pytest.param({"decryption_key_shares": {}}, id="empty_shares"),
@@ -538,12 +539,17 @@ def sample_populated_storage(swh_storage, sample_data):
     swh_storage.content_add(sample_data.contents)
     swh_storage.skipped_content_add(sample_data.skipped_contents)
     swh_storage.directory_add(sample_data.directories)
-    swh_storage.revision_add(sample_data.git_revisions)
+    swh_storage.revision_add(sample_data.revisions)
     swh_storage.release_add(sample_data.releases)
     swh_storage.snapshot_add(sample_data.snapshots)
     swh_storage.origin_add(sample_data.origins)
     swh_storage.origin_visit_add(sample_data.origin_visits)
     swh_storage.origin_visit_status_add(sample_data.origin_visit_statuses)
+    swh_storage.metadata_authority_add(sample_data.authorities)
+    swh_storage.metadata_fetcher_add(sample_data.fetchers)
+    swh_storage.raw_extrinsic_metadata_add(sample_data.content_metadata)
+    swh_storage.raw_extrinsic_metadata_add(sample_data.origin_metadata)
+    swh_storage.extid_add(sample_data.extids)
     return swh_storage
 
 
@@ -573,6 +579,11 @@ def test_create_recovery_bundle(
         # Origin
         "swh:1:ori:33abd4b4c5db79c7387673f71302750fd73e0645",
         "swh:1:ori:9147ab9c9287940d4fdbe95d8780664d7ad2dfc0",
+        # RawExtrinsicMetadata
+        "swh:1:emd:101d70c3574c1e4b730d7ba8e83a4bdadc8691cb",
+        "swh:1:emd:ef3b0865c7a05f79772a3189ddfc8515ec3e1844",
+        "swh:1:emd:43dad4d96edf2fb4f77f0dbf72113b8fe8b5b664",
+        "swh:1:emd:9cafd9348f3a7729c2ef0b9b149ba421589427f0",
     ]
 
     unique_keys_found = []
@@ -606,8 +617,10 @@ def test_create_recovery_bundle(
             "directories/swh_1_dir_5256e856a0a0898966d6ba14feb4388b8b82d302.age",
             "directories/swh_1_dir_4b825dc642cb6eb9a060e54bf8d69288fbee4904.age",
             "directories/swh_1_dir_afa0105cfcaa14fdbacee344e96659170bb1bda5.age",
+            "extids/fa730cf0bb415e1e921e430984bdcddd9c8eea4a.age",
             "revisions/swh_1_rev_01a7114f36fddd5ef2511b2cadda237a68adbb12.age",
             "revisions/swh_1_rev_a646dd94c912829659b22a1e7e143d2fa5ebde1b.age",
+            "extids/486e20ccedc221075b12abbb607a888875db41f6.age",
             "releases/swh_1_rel_f7f222093a18ec60d781070abec4a630c850b837.age",
             "releases/swh_1_rel_db81a26783a3f4a9db07b4759ffc37621f159bb2.age",
             "snapshots/swh_1_snp_9b922e6d8d5b803c1582aabe5525b7b91150788e.age",
@@ -620,6 +633,10 @@ def test_create_recovery_bundle(
             "origins/swh_1_ori_9147ab9c9287940d4fdbe95d8780664d7ad2dfc0.age",
             "origin_visits/swh_1_ori_9147ab9c9287940d4fdbe95d8780664d7ad2dfc0_1.age",
             "origin_visit_statuses/swh_1_ori_9147ab9c9287940d4fdbe95d8780664d7ad2dfc0_1_2015-01-01T23_00_00.000000+00_00.age",
+            "raw_extrinsic_metadata/1_swh_1_emd_101d70c3574c1e4b730d7ba8e83a4bdadc8691cb.age",
+            "raw_extrinsic_metadata/2_swh_1_emd_ef3b0865c7a05f79772a3189ddfc8515ec3e1844.age",
+            "raw_extrinsic_metadata/3_swh_1_emd_43dad4d96edf2fb4f77f0dbf72113b8fe8b5b664.age",
+            "raw_extrinsic_metadata/4_swh_1_emd_9cafd9348f3a7729c2ef0b9b149ba421589427f0.age",
             "manifest.yml",
         ]
         # Can we load the manifest?
@@ -645,8 +662,10 @@ def test_create_recovery_bundle(
             bytes.fromhex("5256e856a0a0898966d6ba14feb4388b8b82d302"),
             bytes.fromhex("4b825dc642cb6eb9a060e54bf8d69288fbee4904"),
             bytes.fromhex("afa0105cfcaa14fdbacee344e96659170bb1bda5"),
+            bytes.fromhex("fa730cf0bb415e1e921e430984bdcddd9c8eea4a"),
             bytes.fromhex("01a7114f36fddd5ef2511b2cadda237a68adbb12"),
             bytes.fromhex("a646dd94c912829659b22a1e7e143d2fa5ebde1b"),
+            bytes.fromhex("486e20ccedc221075b12abbb607a888875db41f6"),
             bytes.fromhex("f7f222093a18ec60d781070abec4a630c850b837"),
             bytes.fromhex("db81a26783a3f4a9db07b4759ffc37621f159bb2"),
             bytes.fromhex("9b922e6d8d5b803c1582aabe5525b7b91150788e"),
@@ -680,6 +699,10 @@ def test_create_recovery_bundle(
                 "origin": "https://github.com/user2/repo1",
                 "visit": "1",
             },
+            bytes.fromhex("101d70c3574c1e4b730d7ba8e83a4bdadc8691cb"),
+            bytes.fromhex("ef3b0865c7a05f79772a3189ddfc8515ec3e1844"),
+            bytes.fromhex("43dad4d96edf2fb4f77f0dbf72113b8fe8b5b664"),
+            bytes.fromhex("9cafd9348f3a7729c2ef0b9b149ba421589427f0"),
         ]
 
 
@@ -744,10 +767,12 @@ def test_create_recovery_bundle_with_optional_fields(
         ) == expiration_date.isoformat(timespec="seconds")
 
 
-@pytest.fixture
-def sample_recovery_bundle_path():
+@pytest.fixture(params=["version-1", "version-2"])
+def sample_recovery_bundle_path(request):
     return os.path.join(
-        os.path.dirname(__file__), "fixtures", "sample.swh-recovery-bundle"
+        os.path.dirname(__file__),
+        "fixtures",
+        f"sample-{request.param}.swh-recovery-bundle",
     )
 
 
@@ -791,14 +816,28 @@ def test_recovery_bundle_write_content_data(tmp_path, sample_recovery_bundle):
     assert open(dest_path, "rb").read() == b"42\n"
 
 
+def sorted_by_swhid(objs):
+    def key(obj) -> str:
+        return str(obj.swhid())
+
+    return sorted(objs, key=key)
+
+
 def test_recovery_bundle_contents(sample_recovery_bundle, sample_data):
     contents = list(sample_recovery_bundle.contents())
-    assert contents == [sample_data.content, sample_data.content3]
+    assert contents == sorted_by_swhid([sample_data.content, sample_data.content3])
 
 
 def test_recovery_bundle_skipped_contents(sample_recovery_bundle, sample_data):
     skipped_contents = list(sample_recovery_bundle.skipped_contents())
-    assert skipped_contents == [sample_data.skipped_content]
+    assert len(skipped_contents) == 1
+    skipped_content = skipped_contents[0]
+    # None-ify fields that are invalid in reference data
+    skipped_content = attr.evolve(skipped_content, ctime=None, origin=None)
+    ref_skipped_content = attr.evolve(
+        sample_data.skipped_content, ctime=None, origin=None
+    )
+    assert skipped_content == ref_skipped_content
 
 
 def test_recovery_bundle_directories(sample_recovery_bundle, sample_data):
@@ -809,7 +848,9 @@ def test_recovery_bundle_directories(sample_recovery_bundle, sample_data):
     assert len(directories) == 3
     for d, sample_d in zip(
         directories,
-        [sample_data.directory, sample_data.directory5, sample_data.directory6],
+        sorted_by_swhid(
+            [sample_data.directory, sample_data.directory5, sample_data.directory6]
+        ),
     ):
         assert d.id == sample_d.id
         assert set(d.entries) == set(sample_d.entries)
@@ -818,22 +859,24 @@ def test_recovery_bundle_directories(sample_recovery_bundle, sample_data):
 
 def test_recovery_bundle_revisions(sample_recovery_bundle, sample_data):
     revisions = list(sample_recovery_bundle.revisions())
-    assert revisions == [sample_data.revision, sample_data.revision2]
+    assert revisions == sorted_by_swhid([sample_data.revision, sample_data.revision2])
 
 
 def test_recovery_bundle_releases(sample_recovery_bundle, sample_data):
     releases = list(sample_recovery_bundle.releases())
-    assert releases == [sample_data.release, sample_data.release2]
+    assert releases == sorted_by_swhid([sample_data.release, sample_data.release2])
 
 
 def test_recovery_bundle_snapshots(sample_recovery_bundle, sample_data):
     snapshots = list(sample_recovery_bundle.snapshots())
-    assert snapshots == [sample_data.snapshot, sample_data.complete_snapshot]
+    assert snapshots == sorted_by_swhid(
+        [sample_data.snapshot, sample_data.complete_snapshot]
+    )
 
 
 def test_recovery_bundle_origins(sample_recovery_bundle, sample_data):
     origins = list(sample_recovery_bundle.origins())
-    assert origins == [sample_data.origin, sample_data.origin2]
+    assert origins == sorted_by_swhid([sample_data.origin, sample_data.origin2])
 
 
 def test_recovery_bundle_origin_visits(sample_recovery_bundle, sample_data):
@@ -854,9 +897,27 @@ def test_recovery_bundle_origin_visit_statuses(sample_recovery_bundle, sample_da
     ]
 
 
+def test_recovery_bundle_raw_extrinsic_metdata(sample_recovery_bundle, sample_data):
+    if sample_recovery_bundle.version < 2:
+        pytest.skip("old bundle does not contain RawExtrinsicMetadata objects")
+    emds = list(sample_recovery_bundle.raw_extrinsic_metadata())
+    assert emds == [
+        sample_data.content_metadata1,
+        sample_data.content_metadata2,
+        sample_data.origin_metadata1,
+        sample_data.origin_metadata2,
+    ]
+
+
+def test_recovery_bundle_extids(sample_recovery_bundle, sample_data):
+    if sample_recovery_bundle.version < 2:
+        pytest.skip("old bundle does not contain ExtID objects")
+    extids = list(sample_recovery_bundle.extids())
+    assert extids == [sample_data.extid1, sample_data.extid3]
+
+
 def test_restore(sample_recovery_bundle, swh_storage, sample_data):
-    result = sample_recovery_bundle.restore(swh_storage)
-    assert result == {
+    expected_result = {
         "content:add": 2,
         "content:add:bytes": 10,
         "skipped_content:add": 1,
@@ -868,6 +929,23 @@ def test_restore(sample_recovery_bundle, swh_storage, sample_data):
         "origin_visit:add": 3,
         "origin_visit_status:add": 3,
     }
+    if sample_recovery_bundle.version >= 2:
+        expected_result |= {
+            "ori_metadata:add": 2,
+            "cnt_metadata:add": 2,
+            "extid:add": 2,
+        }
+        # We are going to restore RawExtrinsicMetadata objects
+        # which requires the right MetadataAuthority and MetadataFetcher
+        # objects to be present in storage. So we need to load them first.
+        # This is ok for now as we don’t remove any MetadataAuthority
+        # or MetadataFetcher, but this might change in the future.
+        # Issue tracked as:
+        # https://gitlab.softwareheritage.org/swh/devel/swh-alter/-/issues/21
+        swh_storage.metadata_authority_add(sample_data.authorities)
+        swh_storage.metadata_fetcher_add(sample_data.fetchers)
+    result = sample_recovery_bundle.restore(swh_storage)
+    assert result == expected_result
     [
         origin,
     ] = swh_storage.origin_get(["https://github.com/user1/repo1"])
@@ -937,6 +1015,11 @@ def test_rollover(
         decrypted_swhids.add(str(origin.swhid()))
         new_origin_visits.update(new_bundle.origin_visits(origin))
         new_origin_visit_statuses.update(new_bundle.origin_visit_statuses(origin))
+    if bundle.version >= 2:
+        decrypted_swhids.update(
+            [str(emd.swhid()) for emd in new_bundle.raw_extrinsic_metadata()]
+        )
+        new_bundle.extids() == bundle.extids()
     assert decrypted_swhids == set(bundle.swhids)
     assert origin_visits == new_origin_visits
     assert origin_visit_statuses == new_origin_visit_statuses

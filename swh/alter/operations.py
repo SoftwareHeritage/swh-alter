@@ -14,6 +14,7 @@ from swh.graph.http_client import RemoteGraphClient
 from swh.journal.writer.kafka import KafkaJournalWriter
 from swh.model.model import BaseModel, Content, KeyType, Origin
 from swh.model.swhids import CoreSWHID, ExtendedObjectType, ExtendedSWHID
+from swh.model.swhids import ObjectType as CoreSWHIDObjectType
 from swh.objstorage.exc import ObjNotFoundError
 from swh.objstorage.interface import (
     CompositeObjId,
@@ -23,7 +24,7 @@ from swh.objstorage.interface import (
 from swh.search.interface import SearchInterface
 from swh.storage.interface import ObjectDeletionInterface, StorageInterface
 
-from .inventory import make_inventory
+from .inventory import get_raw_extrinsic_metadata, make_inventory
 from .progressbar import ProgressBar, ProgressBarInit, no_progressbar
 from .recovery_bundle import (
     AgeSecretKey,
@@ -112,7 +113,11 @@ class Remover:
         if output_pruned_removable_subgraph:
             removable_subgraph.write_dot(output_pruned_removable_subgraph)
             output_pruned_removable_subgraph.close()
-        return list(removable_subgraph.removable_swhids())
+        removable_swhids = list(removable_subgraph.removable_swhids())
+        removable_swhids.extend(
+            get_raw_extrinsic_metadata(self.storage, removable_swhids)
+        )
+        return removable_swhids
 
     def register_object(self, obj: BaseModel) -> None:
         # Register for removal from storage
@@ -155,19 +160,26 @@ class Remover:
         self.recovery_bundle_path = recovery_bundle_path
         self.object_secret_key = object_secret_key
 
-        iterchain = itertools.chain(
+        iterchain = [
             bundle.contents(),
             bundle.skipped_contents(),
             bundle.directories(),
             bundle.revisions(),
             bundle.releases(),
             bundle.snapshots(),
-        )
+        ]
+        if bundle.version >= 2:
+            iterchain.extend(
+                [
+                    bundle.raw_extrinsic_metadata(),
+                    bundle.extids(),
+                ]
+            )
         bar: ProgressBar[int]
         with self.progressbar(
             length=len(bundle.swhids), label="Loading objects…"
         ) as bar:
-            for obj in iterchain:
+            for obj in itertools.chain(*iterchain):
                 self.register_object(obj)
                 bar.update(n_steps=1)
             for origin in bundle.origins():
@@ -271,7 +283,20 @@ class Remover:
                 self.swhids_to_remove, STORAGE_OBJECT_DELETE_CHUNK_SIZE
             ):
                 chunk_swhids = list(chunk_it)
+                # Remove objects addressable by a SWHID
                 results += removal_storage.object_delete(chunk_swhids)
+                # Remove ExtIDs (addressable by their targets)
+                chunk_core_swhids = [
+                    CoreSWHID(
+                        object_type=CoreSWHIDObjectType[
+                            extended_swhid.object_type.name
+                        ],
+                        object_id=extended_swhid.object_id,
+                    )
+                    for extended_swhid in chunk_swhids
+                    if hasattr(CoreSWHIDObjectType, extended_swhid.object_type.name)
+                ]
+                results += removal_storage.extid_delete_for_target(chunk_core_swhids)
                 bar.update(n_steps=len(chunk_swhids))
         _secho(
             f"{results.total()} objects removed from storage “{name}”.",

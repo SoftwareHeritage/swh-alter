@@ -49,7 +49,7 @@ Manifests
 Manifests are simple `YAML <https://yaml.org/>`_ files with a mapping of the
 following entries. All fields are required unless specified.
 
-- ``version`` (int): the literal ``1``, the current version of the recovery
+- ``version`` (int): the literal ``2``, the current version of the recovery
   bundle format.
 - ``removal_identifier`` (string): an arbitrary identifier for the removal
   operation. In most cases, this will be the case identifier used for the
@@ -117,6 +117,15 @@ few custom encodings.
      - ``skipped_contents/``
      - SWHID ``_`` matching skipped content number (due to potential hash collisions)
      - ``swh_1_cnt_0000000000000000000000000000000000000015_1.age``
+   * - :py:class:`RawExtrinsicMetadata <swh.model.model.RawExtrinsicMetadata>`
+     - ``raw_extrinsic_metadata/``
+     - number in the bundle (to ensure target has been previously created) ``_`` SWHID
+     - ``01_swh_1_emd_68d8ee6f7c1e6a07f72895d4460917c183fca21c.age``
+   * - :py:class:`ExtID <swh.model.model.ExtID>`
+     - ``extids/``
+     - hex-encoded (using lowercase ASCII characters) SHA1 of the ExtID
+     - ``486e20ccedc221075b12abbb607a888875db41f6.age``
+
 
 Colons (``:``) are replaced by underscores (``_``) to avoid surprises
 with some filesystems restriction. ``.age`` is added as an extension to
@@ -262,11 +271,21 @@ List of entries in a recovery bundle created for the :ref:`example removal
 
   - ``swh_1_cnt_0000000000000000000000000000000000000015_1.age``
 
+- ``raw_extrinsic_metadata/``:
+
+  - ``1_swh_1_emd_d54fab7faa95094689f605314763170cf5fa2aa7.age``
+  - ``2_swh_1_emd_68d8ee6f7c1e6a07f72895d4460917c183fca21c.age``
+  - ``3_swh_1_emd_482495bf2a894472462be6b1519bf43509bc2afe.age``
+
+- ``extids/``:
+
+  - ``486e20ccedc221075b12abbb607a888875db41f6.age``
+
 Content of ``manifest.yml``:
 
 .. code:: yaml
 
-  version: 1
+  version: 2
   removal_identifier: TDN-2023-06-18-01
   created: 2023-06-18T13:12:42Z
   swhids:
@@ -281,6 +300,9 @@ Content of ``manifest.yml``:
   - swh:1:cnt:0000000000000000000000000000000000000015
   - swh:1:cnt:0000000000000000000000000000000000000014
   - swh:1:cnt:0000000000000000000000000000000000000011
+  - swh:1:emd:68d8ee6f7c1e6a07f72895d4460917c183fca21c
+  - swh:1:emd:d54fab7faa95094689f605314763170cf5fa2aa7
+  - swh:1:emd:a777e9317d1241a026f481b662f2b51a37297a32
   decryption_key_shares:
     "YubiKey serial 4245067 slot 1": |
       -----BEGIN AGE ENCRYPTED FILE-----
@@ -394,3 +416,17 @@ this goal, but as all security-related tools, we can analyze some limits.
 
 .. |age using AEAD| replace:: `age` using AEAD
 .. _age using AEAD: https://words.filippo.io/dispatches/age-authentication/
+
+Version history
+---------------
+
+Version 2 (swh-alter 0.0.8)
+    Added support for
+    :py:class:`RawExtrinsicMetadata <swh.model.model.RawExtrinsicMetadata>`
+    and :py:class:`ExtID <swh.model.model.ExtID>` objects.
+    SWHIDs for :py:class:`RawExtrinsicMetadata <swh.model.model.RawExtrinsicMetadata>`
+    objects can appear in the ``swhids`` field of the manifest. Two new directories,
+    ``raw_extrinsic_metadata/`` and ``extids/``, can be present in the archive.
+
+Version 1 (swh-alter 0.0.2)
+    Initial format.

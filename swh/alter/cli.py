@@ -446,7 +446,7 @@ def list_candidates(
     from swh.graph.http_client import GraphAPIError, RemoteGraphClient
     from swh.storage import get_storage
 
-    from .inventory import make_inventory
+    from .inventory import get_raw_extrinsic_metadata, make_inventory
     from .removable import mark_removable
 
     conf = ctx.obj["config"]
@@ -462,7 +462,9 @@ def list_candidates(
     if omit_referenced:
         subgraph = mark_removable(storage, graph_client, subgraph)
         subgraph.delete_unremovable()
-    for swhid in subgraph.swhids():
+    removable_swhids = list(subgraph.swhids())
+    removable_swhids.extend(get_raw_extrinsic_metadata(storage, removable_swhids))
+    for swhid in removable_swhids:
         click.echo(swhid)
 
 

@@ -21,7 +21,12 @@ from .test_inventory import graph_client_with_both_origins  # noqa: F401
 from .test_inventory import graph_client_with_only_initial_origin  # noqa: F401
 from .test_inventory import graph_client_with_submodule  # noqa: F401
 from .test_inventory import origin_with_submodule  # noqa: F401
+from .test_inventory import sample_extids  # noqa: F401
+from .test_inventory import sample_metadata_authority_deposit  # noqa: F401
+from .test_inventory import sample_metadata_authority_registry  # noqa: F401
+from .test_inventory import sample_metadata_fetcher  # noqa: F401
 from .test_inventory import sample_populated_storage  # noqa: F401
+from .test_inventory import sample_raw_extrinsic_metadata_objects  # noqa: F401
 from .test_inventory import storage_with_forked_origin_removed  # noqa: F401
 from .test_subgraph import write_dot_if_requested
 

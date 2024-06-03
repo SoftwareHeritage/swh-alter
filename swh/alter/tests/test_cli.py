@@ -37,7 +37,12 @@ from .test_inventory import (  # noqa
 )
 from .test_inventory import graph_client_with_only_initial_origin  # noqa: F401
 from .test_inventory import origin_with_submodule  # noqa: F401
+from .test_inventory import sample_extids  # noqa: F401
+from .test_inventory import sample_metadata_authority_deposit  # noqa: F401
+from .test_inventory import sample_metadata_authority_registry  # noqa: F401
+from .test_inventory import sample_metadata_fetcher  # noqa: F401
 from .test_inventory import sample_populated_storage  # noqa: F401
+from .test_inventory import sample_raw_extrinsic_metadata_objects  # noqa: F401
 from .test_recovery_bundle import (
     OBJECT_SECRET_KEY,
     TWO_GROUPS_REQUIRED_WITH_ONE_MINIMUM_SHARE_EACH_SECRET_SHARING_YAML,
@@ -589,6 +594,12 @@ def test_cli_list_candidates_no_omit_referenced(
         swh:1:rev:0000000000000000000000000000000000000003
         swh:1:dir:0000000000000000000000000000000000000002
         swh:1:cnt:0000000000000000000000000000000000000001
+        swh:1:emd:1dd61e73df5a9c9cd422413462f0b623582f23a3
+        swh:1:emd:482495bf2a894472462be6b1519bf43509bc2afe
+        swh:1:emd:68d8ee6f7c1e6a07f72895d4460917c183fca21c
+        swh:1:emd:a777e9317d1241a026f481b662f2b51a37297a32
+        swh:1:emd:d54fab7faa95094689f605314763170cf5fa2aa7
+        swh:1:emd:f584cf10d8e222ccd1301e70d531d894fd3c3263
         """.rstrip().splitlines()
     }
 
@@ -617,17 +628,30 @@ def test_cli_list_candidates_multiple_swhids(mocked_external_resources, remove_c
         swh:1:dir:0000000000000000000000000000000000000002
         swh:1:rev:0000000000000000000000000000000000000003
         swh:1:cnt:0000000000000000000000000000000000000001
+        swh:1:emd:482495bf2a894472462be6b1519bf43509bc2afe
+        swh:1:emd:68d8ee6f7c1e6a07f72895d4460917c183fca21c
+        swh:1:emd:a777e9317d1241a026f481b662f2b51a37297a32
+        swh:1:emd:d54fab7faa95094689f605314763170cf5fa2aa7
+        swh:1:emd:f584cf10d8e222ccd1301e70d531d894fd3c3263
         """.rstrip().splitlines()
     }
 
 
 def test_cli_recovery_bundle_resume_removal_restores_bundle_when_remove_fails(
+    request,
     capture_output,
     mocker,
     mocked_external_resources,
+    swh_storage,
+    sample_data,
     remove_config_path,
     sample_recovery_bundle_path,  # noqa: F811
 ):
+    if "version-1" not in request.keywords:
+        # See comment in test_recovery_bundle.py:test_restore()
+        swh_storage.metadata_authority_add(sample_data.authorities)
+        swh_storage.metadata_fetcher_add(sample_data.fetchers)
+
     def fake_remove() -> None:
         from ..operations import RemoverError
 
@@ -823,11 +847,17 @@ def restore_config_path(tmp_path, restore_config):
 
 
 def test_cli_recovery_bundle_restore_adds_all_objects(
+    request,
     capture_output,
     sample_recovery_bundle_path,  # noqa: F811
     swh_storage,
+    sample_data,
     restore_config_path,
 ):
+    if "version-1" not in request.keywords:
+        # See comment in test_recovery_bundle.py:test_restore()
+        swh_storage.metadata_authority_add(sample_data.authorities)
+        swh_storage.metadata_fetcher_add(sample_data.fetchers)
     runner = CliRunner()
     result = runner.invoke(
         alter_cli_group,
@@ -849,6 +879,10 @@ def test_cli_recovery_bundle_restore_adds_all_objects(
     assert "Release objects added: 2" in result.output
     assert "Snapshot objects added: 2" in result.output
     assert "Origin objects added: 2" in result.output
+    if "version-1" not in request.keywords:
+        assert "RawExtrinsicMetadata objects for origins added: 2" in result.output
+        assert "RawExtrinsicMetadata objects for contents added: 2" in result.output
+        assert "ExtID objects added: 2" in result.output
 
 
 def test_cli_recovery_bundle_restore_from_identity_files(
@@ -1093,7 +1127,7 @@ def test_cli_recovery_bundle_info(complete_manifest_recovery_bundle_path):
     assert result.output == EXPECTED_INFO_WITH_COMPLETE_MANIFEST
 
 
-EXPECTED_INFO_WITH_ENCRYPTED_SECRETS = """\
+EXPECTED_INFO_WITH_ENCRYPTED_SECRETS_VERSION_1 = """\
 Recovery bundle “test_bundle”
 =============================
 
@@ -1175,8 +1209,99 @@ kjsn91l8dZElvo4XWtMVoedaMaX1zQOnrDeIoKWrSohV+Miosg==
 
 """
 
+EXPECTED_INFO_WITH_ENCRYPTED_SECRETS_VERSION_2 = """\
+Recovery bundle “test_bundle”
+=============================
+
+Created: 2024-06-03T14:08:55+00:00
+List of SWHID objects:
+- swh:1:cnt:d81cc0710eb6cf9efd5b920a8453e1e07157b6cd
+- swh:1:cnt:c932c7649c6dfa4b82327d121215116909eb3bea
+- swh:1:cnt:33e45d56f88993aae6a0198013efa80716fd8920
+- swh:1:dir:5256e856a0a0898966d6ba14feb4388b8b82d302
+- swh:1:dir:4b825dc642cb6eb9a060e54bf8d69288fbee4904
+- swh:1:dir:afa0105cfcaa14fdbacee344e96659170bb1bda5
+- swh:1:rev:01a7114f36fddd5ef2511b2cadda237a68adbb12
+- swh:1:rev:a646dd94c912829659b22a1e7e143d2fa5ebde1b
+- swh:1:rel:f7f222093a18ec60d781070abec4a630c850b837
+- swh:1:rel:db81a26783a3f4a9db07b4759ffc37621f159bb2
+- swh:1:snp:9b922e6d8d5b803c1582aabe5525b7b91150788e
+- swh:1:snp:db99fda25b43dc5cd90625ee4b0744751799c917
+- swh:1:ori:33abd4b4c5db79c7387673f71302750fd73e0645
+- swh:1:ori:9147ab9c9287940d4fdbe95d8780664d7ad2dfc0
+- swh:1:emd:101d70c3574c1e4b730d7ba8e83a4bdadc8691cb
+- swh:1:emd:ef3b0865c7a05f79772a3189ddfc8515ec3e1844
+- swh:1:emd:43dad4d96edf2fb4f77f0dbf72113b8fe8b5b664
+- swh:1:emd:9cafd9348f3a7729c2ef0b9b149ba421589427f0
+Secret share holders:
+- Ali
+-----BEGIN AGE ENCRYPTED FILE-----
+YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBNaUNsYjBBdUMram5WdjJY
+dzJpc3U1MEtnbC9NRGJoNnlpK0dHVnNvQmxnCjVxOXBEWExqK3o1Yk5VZFN1WVlW
+eGppcnVSMG9aZmtkVEVKY2Z1bzczWmMKLT4gXkI0UTpbKy1ncmVhc2UgYjY5Vlwo
+CjJ6aFIrYmFjS2xFai9FbGxFUjA3TU14NlZFcTI2dHcwa1JnVncrcU92dDVGemtt
+NGFzLzlaUnUwT1lzQjkvV3YKNUUyS2JLMmx4Q1dFRHZkWGhVQWRPdwotLS0gS3Ir
+VDFQM1dqVThGNXhOUWg0NUhMK3p6aE4yVzYzdzZTZTRaWGlUN2lWWQqrungtlmC2
+ZfPJnq+TWKW/K01h7DGDQG8nFuSrxeO6OYq8wkWDbru8uKIYScmM8OlHl+TKqiyw
+SKcRgPdx2R3PlOglyEqYEEIPnUzjlrC3Jfx5pGMut/bq6S56S03mLvpiKV0IHhUG
+2HjWp0g/XAFQ4Yf/dk1NUyjpVSkWMRjW1oES1tUrRWVz/q6nJ1Uqn0avd/DEsjNF
+lGlW5S/n3WqbRcrZRPh39m200InLeBsGYqt9FtMlePF+KnFYxDzN7wUSsv/ZF+g3
+ZJzqFlf1RehWylrQRnv68dRzMbfg1ixd4bA+PujwAk9nH1mwe9g2dDyCNmh6WGQM
+cJ3EVQknq+b93XSH2Fr5qxvBzI87nKBDzXfZ6QxjUmbU0pdGgMpoi9PSzBVP
+-----END AGE ENCRYPTED FILE-----
+
+- Bob
+-----BEGIN AGE ENCRYPTED FILE-----
+YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBDdXJJbVFRWWQvSmVVbCt5
+K0x1S0kxNjUydFRtbzVpUy9OWFUvUExieVJzCno3MVBGdzJwRDJoU0czYU02dGVs
+cllLSzJ6akRtTEdwTmVTc0RNcUxsYVkKLT4gPz8rLmJELWdyZWFzZSBiU2EpPiBL
+VVJOIHMjCk0wTHRXb0NUQ3cyWll6WjlGVTR3WUEKLS0tIE1jQU9sRnZSOThxbTlt
+QkU2ektkYjc1MXpWaGlpSG9iVHNvam5ZZFUzMHcKHCjzH3sxl3hoNE18ZJioJSoY
+O2TH8j8y94Hc+Id5t42UdX89tMKuv5kPyYxWI+EoMgYFIqdwO7btybPjxsQlP0jN
+gV2B4gcfqGjiZh6xgURO3r9OuJZkIv3ObFvYJtWbjq9Lzz7shV7fLeQTD2aIflwW
+OfiOsLF3j3tzv/17bQUWxzKWLsnwgBgs/W2Elc35b3XgcWcNAQlqgJqYGw7fzZiV
+CS9GhRGIQeI1sN/8QL7V2Eu3sSVs2/LMhY/Wu+tNNYKSQsiju+TObXd5iudIAfTy
+wMmLmlr4vT3iF1/0KvoIYKq/mGFdQL/j5jMKiFCdAzAEr1raoDxWPj84/lq/Nth/
+imU/PsgoTREPwArIX5+qduobiMqf9U5golfLdOdkD05eEg==
+-----END AGE ENCRYPTED FILE-----
+
+- Camille
+-----BEGIN AGE ENCRYPTED FILE-----
+YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBMV1kvY1ZSWlBXejFIU0NB
+WUkvdjhzREdXTU5jUGI4V2NzaE40QnNrcUNJCmdHdzhXOHJOaElXSXVrZGhBbERy
+MmxMZVM4UjdnWTVqUEgrVDk2YUFRVjgKLT4gJFNBeyFVUFYtZ3JlYXNlIDcgP344
+U009RiBAbX19LEs2IFw+Two3dFJaWm1UdTl6TUZxK05Ha3RZaENQc0c2UFVxOGFK
+V21jOS9DRFVKSHVZWk9ZMkcrcmJCQkFYbXdZa1pNaG9RClhSWEZtQXpuCi0tLSBI
+cms4Sis3eXVxSFp5NG1RSHZUSDBrTFB6WkpQNnJZYVlHR2dOdFBIWWhzCnYYgmEF
+CjXAOpi+2MG3L3uqo+9fHms3sb2jyRJFDGHvpkhcYjvO7WmQ2KQW+adhja8ZncMN
+GFE0nAv+lueC2oJCZeoMXwkbOPmE+t8rPxFBU+wTqlSGDYa0n6IEuY2loNoZQHKm
+y6HbchAeLFczvsXElCupe2L+dc8JWTsi+ZqmCs3G/cLSH/WBnMCBa4erhVtqV16V
+sfQLp4XCKI4+THdGhdnSd6pBChSubmYAeV18+eaJsRdVHul8wVD9t3EEa+o3oQ3J
+OtD3TYlLc5Kb0Oq3KEQg/CAc0kCxvwZilc96er07PdxVDEusmwB7Eci/CsKMSVnp
+lV7CCPlUhLA4QO27+1HgD/sRea1BYR7pXLrEVB+056w6bidg/4jdiJu0KsgHtU1y
+7g==
+-----END AGE ENCRYPTED FILE-----
+
+- Dlique
+-----BEGIN AGE ENCRYPTED FILE-----
+YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBtZWR2cDRFcmNPcHF2OWZo
+SVVlN1Y1ZTdZYU15cEU1bTVxSVpQWUxER1NJCnhLbVI5M0FvVytnZnp2alBtK1FC
+dnNUVWd3ZDVBaHpheFpjVERwN3lqTVEKLT4gIiktZ3JlYXNlIHV+N3hsPyAwbCUg
+fGlNNDZjOksKYVZKdk1lelc0WGhnNGwrdUN1aklJZjB5UlUxSmNRCi0tLSBEdmdC
+cXVGeHJUb0RkdVBaRVZjSFcwOFpqTDVma3FBUm5Cc1RaS0dLcGJZCmOTJCNSlscr
+L5i+voKs1vkc3BuxbxX0n9SIMbxJedIkcsOC84gvuH9F1L/0XuoFa4OmsYuHuwOc
+nDJTM6vC+0Zar7PNnOBiqc7CUaqG8MwTsuIEA5E6JA5OTwfLlff/V1XxcL1Uk+Ta
+R2YKYfuGIBFUOI2Aplu96zOn09w3MF+6FZK8E+6vl2/PE09267nk1dOoFJnmOY36
+N0IEnx8gCboDZgtFVWASe4UUS+ZbHFAwqo7Q/euz2y1wo6WV+miEiOecDSER09WV
+iJlYvmOktCmK1Y3Zw66Ytz27P1m03/g+MqpZz4sRVCTkpH4p0JecFd0/q9ukIZfF
+01BicZhRGfcfCt3hb/0bEv/kYaYAAmP7Igjxc7tx1tNqtfcGFY5Efr98DCrRTA==
+-----END AGE ENCRYPTED FILE-----
+
+"""
+
 
 def test_cli_recovery_bundle_info_show_encrypted_secrets(
+    request,
     sample_recovery_bundle_path,  # noqa: F811
 ):
     runner = CliRunner()
@@ -1188,7 +1313,12 @@ def test_cli_recovery_bundle_info_show_encrypted_secrets(
         ],
     )
     assert result.exit_code == 0
-    assert result.output == EXPECTED_INFO_WITH_ENCRYPTED_SECRETS
+    if "version-1" in request.keywords:
+        assert result.output == EXPECTED_INFO_WITH_ENCRYPTED_SECRETS_VERSION_1
+    elif "version-2" in request.keywords:
+        assert result.output == EXPECTED_INFO_WITH_ENCRYPTED_SECRETS_VERSION_2
+    else:
+        raise ValueError("Testing an unknown recovery bundle version")
 
 
 EXPECTED_DUMP_WITH_COMPLETE_MANIFEST = """\

@@ -15,7 +15,7 @@ from typing import Any, Callable, Collection, Dict, Iterator, List, Optional, Se
 
 from igraph import Vertex
 
-from swh.core.api.classes import stream_results_optional
+from swh.core.api.classes import stream_results, stream_results_optional
 from swh.graph.http_client import GraphArgumentException, RemoteGraphClient
 from swh.model.model import Revision
 from swh.model.swhids import ExtendedObjectType as ObjectType
@@ -381,3 +381,26 @@ def make_inventory(
         for swhid in bar:
             lister.inventory_candidates(swhid)
     return lister.subgraph
+
+
+def get_raw_extrinsic_metadata(
+    storage: StorageInterface, referencing_swhids: List[ExtendedSWHID]
+) -> Iterator[ExtendedSWHID]:
+    """Find RawExtrinsicMetadata referencing the given SWHIDs.
+
+    This will recursively find RawExtrinsicMetadata referencing
+    the found RawExtrinsicMetadata objects. The output is sorted
+    in the order of the iterations: the objects coming first are
+    referenced by objects latter in the list.
+    """
+    while len(referencing_swhids) > 0:
+        found_swhids = []
+        for target_swhid in referencing_swhids:
+            authorities = storage.raw_extrinsic_metadata_get_authorities(target_swhid)
+            for authority in authorities:
+                for emd in stream_results(
+                    storage.raw_extrinsic_metadata_get, target_swhid, authority
+                ):
+                    found_swhids.append(emd.swhid())
+        yield from found_swhids
+        referencing_swhids = found_swhids

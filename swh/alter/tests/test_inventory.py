@@ -14,9 +14,14 @@ from swh.model.model import (
     Content,
     Directory,
     DirectoryEntry,
+    ExtID,
+    MetadataAuthority,
+    MetadataAuthorityType,
+    MetadataFetcher,
     Origin,
     OriginVisit,
     OriginVisitStatus,
+    RawExtrinsicMetadata,
     Revision,
     RevisionType,
     Snapshot,
@@ -25,9 +30,10 @@ from swh.model.model import (
     Timestamp,
     TimestampWithTimezone,
 )
-from swh.model.swhids import ExtendedSWHID
+from swh.model.swhids import CoreSWHID, ExtendedObjectType, ExtendedSWHID
+from swh.model.swhids import ObjectType as CoreSWHIDObjectType
 
-from ..inventory import InventorySubgraph, Lister
+from ..inventory import InventorySubgraph, Lister, get_raw_extrinsic_metadata
 from .test_subgraph import empty_subgraph, sample_data_subgraph  # noqa: F401
 
 logger = logging.getLogger(__name__)
@@ -150,10 +156,214 @@ def directory_6_with_multiple_entries_pointing_to_the_same_content():
 
 
 @pytest.fixture
+def sample_extids():
+    extid_snp = ExtID(
+        target=CoreSWHID(object_type=CoreSWHIDObjectType.SNAPSHOT, object_id=h(20)),
+        extid_type="snapshot",
+        extid=h(20),
+    )
+    extid_rel1 = ExtID(
+        target=CoreSWHID(object_type=CoreSWHIDObjectType.RELEASE, object_id=h(10)),
+        extid_type="git",
+        extid=h(10),
+    )
+    extid_rel2 = ExtID(
+        target=CoreSWHID(object_type=CoreSWHIDObjectType.RELEASE, object_id=h(10)),
+        extid_type="drink_some",
+        extid=h(0xC0FFEE),
+    )
+    extid_rev = ExtID(
+        target=CoreSWHID(object_type=CoreSWHIDObjectType.REVISION, object_id=h(3)),
+        extid_type="revision",
+        extid=h(3),
+    )
+    extid_dir = ExtID(
+        target=CoreSWHID(object_type=CoreSWHIDObjectType.DIRECTORY, object_id=h(2)),
+        extid_type="directory",
+        extid=h(2),
+    )
+    extid_cnt = ExtID(
+        target=CoreSWHID(object_type=CoreSWHIDObjectType.CONTENT, object_id=h(1)),
+        extid_type="all_cats_are_beautiful",
+        extid=h(0xACAB),
+    )
+    extid_skipped_content = ExtID(
+        target=CoreSWHID(object_type=CoreSWHIDObjectType.CONTENT, object_id=h(15)),
+        extid_type="skipped_content",
+        extid=h(15),
+    )
+    return [
+        extid_snp,
+        extid_rel1,
+        extid_rel2,
+        extid_rev,
+        extid_dir,
+        extid_cnt,
+        extid_skipped_content,
+    ]
+
+
+@pytest.fixture
+def sample_metadata_authority_registry():
+    return MetadataAuthority(
+        type=MetadataAuthorityType.REGISTRY,
+        url="https://wikidata.example.org/",
+    )
+
+
+@pytest.fixture
+def sample_metadata_authority_deposit():
+    return MetadataAuthority(
+        type=MetadataAuthorityType.DEPOSIT_CLIENT,
+        url="http://hal.inria.example.com/",
+    )
+
+
+@pytest.fixture
+def sample_metadata_fetcher():
+    return MetadataFetcher(
+        name="swh-example",
+        version="0.0.1",
+    )
+
+
+@pytest.fixture
+def sample_raw_extrinsic_metadata_objects(
+    sample_metadata_authority_registry,
+    sample_metadata_authority_deposit,
+    sample_metadata_fetcher,
+):
+    emd_ori1 = RawExtrinsicMetadata(
+        target=graph_dataset.INITIAL_ORIGIN.swhid(),
+        discovery_date=datetime.datetime(
+            2015, 1, 1, 21, 0, 0, tzinfo=datetime.timezone.utc
+        ),
+        authority=sample_metadata_authority_registry,
+        fetcher=sample_metadata_fetcher,
+        format="json",
+        metadata=b'{"position": "initial"}',
+    )
+    emd_ori2 = RawExtrinsicMetadata(
+        target=graph_dataset.INITIAL_ORIGIN.swhid(),
+        discovery_date=datetime.datetime(
+            2016, 1, 1, 21, 0, 0, tzinfo=datetime.timezone.utc
+        ),
+        authority=sample_metadata_authority_registry,
+        fetcher=sample_metadata_fetcher,
+        format="json",
+        metadata=b'{"history": "updated"}',
+    )
+    emd_ori3 = RawExtrinsicMetadata(
+        target=graph_dataset.INITIAL_ORIGIN.swhid(),
+        discovery_date=datetime.datetime(
+            2016, 1, 1, 21, 0, 0, tzinfo=datetime.timezone.utc
+        ),
+        authority=sample_metadata_authority_deposit,
+        fetcher=sample_metadata_fetcher,
+        format="json",
+        metadata=b'{"some": "thing"}',
+    )
+    emd_snp = RawExtrinsicMetadata(
+        target=ExtendedSWHID(object_type=ExtendedObjectType.SNAPSHOT, object_id=h(20)),
+        discovery_date=datetime.datetime(
+            2015, 1, 1, 21, 0, 0, tzinfo=datetime.timezone.utc
+        ),
+        authority=sample_metadata_authority_registry,
+        fetcher=sample_metadata_fetcher,
+        format="json",
+        metadata=b'{"violet": "blue"}',
+    )
+    emd_rel = RawExtrinsicMetadata(
+        target=ExtendedSWHID(object_type=ExtendedObjectType.RELEASE, object_id=h(10)),
+        discovery_date=datetime.datetime(
+            2015, 1, 1, 21, 0, 0, tzinfo=datetime.timezone.utc
+        ),
+        authority=sample_metadata_authority_registry,
+        fetcher=sample_metadata_fetcher,
+        format="json",
+        metadata=b'{"roses": "red"}',
+    )
+    emd_rev = RawExtrinsicMetadata(
+        target=ExtendedSWHID(object_type=ExtendedObjectType.REVISION, object_id=h(3)),
+        discovery_date=datetime.datetime(
+            2015, 1, 1, 21, 0, 0, tzinfo=datetime.timezone.utc
+        ),
+        authority=sample_metadata_authority_registry,
+        fetcher=sample_metadata_fetcher,
+        format="json",
+        metadata=b'{"love": "you"}',
+    )
+    emd_dir = RawExtrinsicMetadata(
+        target=ExtendedSWHID(object_type=ExtendedObjectType.DIRECTORY, object_id=h(2)),
+        discovery_date=datetime.datetime(
+            2015, 1, 1, 21, 0, 0, tzinfo=datetime.timezone.utc
+        ),
+        authority=sample_metadata_authority_registry,
+        fetcher=sample_metadata_fetcher,
+        format="json",
+        metadata=b'{"cheesy": "true"}',
+    )
+    emd_cnt = RawExtrinsicMetadata(
+        target=ExtendedSWHID(object_type=ExtendedObjectType.CONTENT, object_id=h(1)),
+        discovery_date=datetime.datetime(
+            2015, 1, 1, 21, 0, 0, tzinfo=datetime.timezone.utc
+        ),
+        authority=sample_metadata_authority_registry,
+        fetcher=sample_metadata_fetcher,
+        format="json",
+        metadata=b'{"address": "gemini"}',
+        origin=graph_dataset.INITIAL_ORIGIN.url,
+        visit=1,
+        snapshot=CoreSWHID(object_type=CoreSWHIDObjectType.SNAPSHOT, object_id=h(20)),
+        release=CoreSWHID(object_type=CoreSWHIDObjectType.RELEASE, object_id=h(10)),
+        revision=CoreSWHID(object_type=CoreSWHIDObjectType.REVISION, object_id=h(3)),
+        directory=CoreSWHID(object_type=CoreSWHIDObjectType.DIRECTORY, object_id=h(2)),
+        path=b"/over/the/rainbow",
+    )
+    emd_emd = RawExtrinsicMetadata(
+        target=emd_cnt.swhid(),
+        discovery_date=datetime.datetime(
+            2015, 1, 1, 21, 0, 0, tzinfo=datetime.timezone.utc
+        ),
+        authority=sample_metadata_authority_deposit,
+        fetcher=sample_metadata_fetcher,
+        format="json",
+        metadata=b'{"meta": "meta"}',
+    )
+    emd_emd_emd = RawExtrinsicMetadata(
+        target=emd_emd.swhid(),
+        discovery_date=datetime.datetime(
+            2015, 1, 1, 21, 0, 0, tzinfo=datetime.timezone.utc
+        ),
+        authority=sample_metadata_authority_deposit,
+        fetcher=sample_metadata_fetcher,
+        format="json",
+        metadata=b'{"meta": "meta-meta"}',
+    )
+    return [
+        emd_ori1,
+        emd_ori2,
+        emd_ori3,
+        emd_snp,
+        emd_rel,
+        emd_rev,
+        emd_dir,
+        emd_cnt,
+        emd_emd,
+        emd_emd_emd,
+    ]
+
+
+@pytest.fixture
 def sample_populated_storage(
     swh_storage,
     snapshot_20_with_multiple_branches_pointing_to_the_same_head,
     directory_6_with_multiple_entries_pointing_to_the_same_content,
+    sample_extids,
+    sample_metadata_authority_registry,
+    sample_metadata_authority_deposit,
+    sample_metadata_fetcher,
+    sample_raw_extrinsic_metadata_objects,
 ):
     result = swh_storage.content_add(fix_contents(graph_dataset.CONTENTS))
     assert result.get("content:add") == 6
@@ -185,6 +395,26 @@ def sample_populated_storage(
     assert result == {"origin:add": 2}
     swh_storage.origin_visit_add(graph_dataset.ORIGIN_VISITS)
     swh_storage.origin_visit_status_add(graph_dataset.ORIGIN_VISIT_STATUSES)
+    result = swh_storage.extid_add(sample_extids)
+    assert result == {"extid:add": 7}
+    result = swh_storage.metadata_authority_add(
+        [sample_metadata_authority_registry, sample_metadata_authority_deposit]
+    )
+    assert result == {"metadata_authority:add": 2}
+    result = swh_storage.metadata_fetcher_add([sample_metadata_fetcher])
+    assert result == {"metadata_fetcher:add": 1}
+    result = swh_storage.raw_extrinsic_metadata_add(
+        sample_raw_extrinsic_metadata_objects
+    )
+    assert result == {
+        "ori_metadata:add": 3,
+        "snp_metadata:add": 1,
+        "rev_metadata:add": 1,
+        "rel_metadata:add": 1,
+        "dir_metadata:add": 1,
+        "cnt_metadata:add": 1,
+        "emd_metadata:add": 2,
+    }
     return swh_storage
 
 
@@ -731,3 +961,39 @@ def storage_with_forked_origin_removed(sample_populated_storage):
         "snapshot:delete": 1,
     }
     return sample_populated_storage
+
+
+#
+# RawExtrinsicMetadata objects
+# ============================
+
+
+def test_get_raw_extrinsic_metadata(sample_populated_storage):
+    target_swhids = [
+        ExtendedSWHID.from_string(str)
+        for str in [
+            "swh:1:ori:83404f995118bd25774f4ac14422a8f175e7a054",
+            "swh:1:snp:0000000000000000000000000000000000000020",
+            "swh:1:rel:0000000000000000000000000000000000000010",
+            "swh:1:rev:0000000000000000000000000000000000000003",
+            "swh:1:dir:0000000000000000000000000000000000000002",
+            "swh:1:cnt:0000000000000000000000000000000000000001",
+        ]
+    ]
+    assert list(
+        get_raw_extrinsic_metadata(sample_populated_storage, target_swhids)
+    ) == [
+        ExtendedSWHID.from_string(str)
+        for str in [
+            "swh:1:emd:ba1e287385aac8d76caaf9956819a5d68bfe2083",
+            "swh:1:emd:bfe476f7cffb00a5be2b12cfb364e207e4be0da2",
+            "swh:1:emd:1ecd328c7597043895621da4d5351c59f1de663c",
+            "swh:1:emd:bcfe01c5e96a675b500d32b15b4ea36bd5a46cdb",
+            "swh:1:emd:1dd61e73df5a9c9cd422413462f0b623582f23a3",
+            "swh:1:emd:f584cf10d8e222ccd1301e70d531d894fd3c3263",
+            "swh:1:emd:482495bf2a894472462be6b1519bf43509bc2afe",
+            "swh:1:emd:68d8ee6f7c1e6a07f72895d4460917c183fca21c",
+            "swh:1:emd:d54fab7faa95094689f605314763170cf5fa2aa7",
+            "swh:1:emd:a777e9317d1241a026f481b662f2b51a37297a32",
+        ]
+    ]

@@ -14,7 +14,7 @@ import pytest
 import yaml
 
 from swh.model.model import BaseModel
-from swh.model.swhids import ExtendedObjectType, ExtendedSWHID
+from swh.model.swhids import CoreSWHID, ExtendedObjectType, ExtendedSWHID
 from swh.objstorage.interface import ObjStorageInterface
 from swh.search.interface import SearchInterface
 from swh.storage.interface import StorageInterface
@@ -26,7 +26,12 @@ from .test_inventory import (  # noqa
     snapshot_20_with_multiple_branches_pointing_to_the_same_head,
 )
 from .test_inventory import graph_client_with_only_initial_origin  # noqa: F401
+from .test_inventory import sample_extids  # noqa: F401
+from .test_inventory import sample_metadata_authority_deposit  # noqa: F401
+from .test_inventory import sample_metadata_authority_registry  # noqa: F401
+from .test_inventory import sample_metadata_fetcher  # noqa: F401
 from .test_inventory import sample_populated_storage  # noqa: F401
+from .test_inventory import sample_raw_extrinsic_metadata_objects  # noqa: F401
 from .test_recovery_bundle import (
     OBJECT_SECRET_KEY,
     TWO_GROUPS_REQUIRED_WITH_ONE_MINIMUM_SHARE_EACH_SECRET_SHARING_YAML,
@@ -54,7 +59,7 @@ def test_remover_get_removable(remover):
         ExtendedSWHID.from_string("swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165"),
     ]
     removable_swhids = remover.get_removable(swhids)
-    assert len(removable_swhids) == 23
+    assert len(removable_swhids) == 33
 
 
 @pytest.mark.skipif(
@@ -188,21 +193,37 @@ def test_remover_remove(
 ):
     removal_storage_one = mocker.MagicMock()
     removal_storage_one.object_delete.return_value = {"origin:delete": 0}
+    removal_storage_one.extid_delete_for_target.return_value = {"extid:delete": 0}
     removal_storage_two = mocker.MagicMock()
     removal_storage_two.object_delete.return_value = {"origin:delete": 0}
+    removal_storage_two.extid_delete_for_target.return_value = {"extid:delete": 0}
     remover = Remover(
         storage_with_references_from_forked_origin,
         graph_client_with_only_initial_origin,
         removal_storages={"one": removal_storage_one, "two": removal_storage_two},
     )
+    core_swhids = """\
+        swh:1:snp:0000000000000000000000000000000000000022
+        swh:1:rev:0000000000000000000000000000000000000018
+        swh:1:rel:0000000000000000000000000000000000000021
+    """
     remover.swhids_to_remove = [
-        ExtendedSWHID.from_string("swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165"),
+        ExtendedSWHID.from_string("swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165")
+    ] + [
+        ExtendedSWHID.from_string(line.strip())
+        for line in core_swhids.rstrip().splitlines()
     ]
     remover.remove()
     for storage in (removal_storage_one, removal_storage_two):
         storage.object_delete.assert_called_once()
         args, _ = storage.object_delete.call_args
         assert set(args[0]) == set(remover.swhids_to_remove)
+        storage.extid_delete_for_target.assert_called_once()
+        args, _ = storage.extid_delete_for_target.call_args
+        assert set(args[0]) == {
+            CoreSWHID.from_string(line.strip())
+            for line in core_swhids.rstrip().splitlines()
+        }
 
 
 def test_remover_remove_from_objstorages(
@@ -437,6 +458,7 @@ def test_remover_restore_recovery_bundle_logs_insert_count_mismatch(
 
 
 def test_remover_register_objects_from_bundle(
+    request,
     mocker,
     remover,
     sample_recovery_bundle_path,  # noqa: F811
@@ -457,7 +479,7 @@ def test_remover_register_objects_from_bundle(
         object_secret_key=OBJECT_SECRET_KEY,
     )
 
-    assert obj_swhids == {
+    expected_swhids = {
         "swh:1:cnt:d81cc0710eb6cf9efd5b920a8453e1e07157b6cd",
         "swh:1:cnt:c932c7649c6dfa4b82327d121215116909eb3bea",
         "swh:1:cnt:33e45d56f88993aae6a0198013efa80716fd8920",
@@ -473,9 +495,17 @@ def test_remover_register_objects_from_bundle(
         "swh:1:ori:33abd4b4c5db79c7387673f71302750fd73e0645",
         "swh:1:ori:9147ab9c9287940d4fdbe95d8780664d7ad2dfc0",
     }
-    assert obj_unique_keys == [
-        bytes.fromhex("34973274ccef6ab4dfaaf86599792fa9c3fe4689"),
+    if "version-1" not in request.keywords:
+        expected_swhids |= {
+            "swh:1:emd:101d70c3574c1e4b730d7ba8e83a4bdadc8691cb",
+            "swh:1:emd:43dad4d96edf2fb4f77f0dbf72113b8fe8b5b664",
+            "swh:1:emd:9cafd9348f3a7729c2ef0b9b149ba421589427f0",
+            "swh:1:emd:ef3b0865c7a05f79772a3189ddfc8515ec3e1844",
+        }
+    assert obj_swhids == expected_swhids
+    expected_unique_keys = [
         bytes.fromhex("3e21cc4942a4234c9e5edd8a9cacd1670fe59f13"),
+        bytes.fromhex("34973274ccef6ab4dfaaf86599792fa9c3fe4689"),
         {
             "sha1": bytes.fromhex("43e45d56f88993aae6a0198013efa80716fd8920"),
             "sha1_git": bytes.fromhex("33e45d56f88993aae6a0198013efa80716fd8920"),
@@ -486,42 +516,60 @@ def test_remover_register_objects_from_bundle(
                 "ade18b1adecb33f891ca36664da676e12c772cc193778aac9a137b8dc5834b9b"
             ),
         },
-        bytes.fromhex("5256e856a0a0898966d6ba14feb4388b8b82d302"),
         bytes.fromhex("4b825dc642cb6eb9a060e54bf8d69288fbee4904"),
+        bytes.fromhex("5256e856a0a0898966d6ba14feb4388b8b82d302"),
         bytes.fromhex("afa0105cfcaa14fdbacee344e96659170bb1bda5"),
         bytes.fromhex("01a7114f36fddd5ef2511b2cadda237a68adbb12"),
         bytes.fromhex("a646dd94c912829659b22a1e7e143d2fa5ebde1b"),
-        bytes.fromhex("f7f222093a18ec60d781070abec4a630c850b837"),
         bytes.fromhex("db81a26783a3f4a9db07b4759ffc37621f159bb2"),
+        bytes.fromhex("f7f222093a18ec60d781070abec4a630c850b837"),
         bytes.fromhex("9b922e6d8d5b803c1582aabe5525b7b91150788e"),
         bytes.fromhex("db99fda25b43dc5cd90625ee4b0744751799c917"),
-        {"url": "https://github.com/user1/repo1"},
-        {
-            "origin": "https://github.com/user1/repo1",
-            "date": "2015-01-01 23:00:00+00:00",
-        },
-        {
-            "origin": "https://github.com/user1/repo1",
-            "date": "2017-01-01 23:00:00+00:00",
-        },
-        {
-            "origin": "https://github.com/user1/repo1",
-            "visit": "1",
-            "date": "2015-01-01 23:00:00+00:00",
-        },
-        {
-            "origin": "https://github.com/user1/repo1",
-            "visit": "2",
-            "date": "2017-01-01 23:00:00+00:00",
-        },
-        {"url": "https://github.com/user2/repo1"},
-        {
-            "origin": "https://github.com/user2/repo1",
-            "date": "2015-01-01 23:00:00+00:00",
-        },
-        {
-            "origin": "https://github.com/user2/repo1",
-            "visit": "1",
-            "date": "2015-01-01 23:00:00+00:00",
-        },
     ]
+    if "version-1" not in request.keywords:
+        expected_unique_keys.extend(
+            [
+                # RawExtrinsicMetadata
+                bytes.fromhex("101d70c3574c1e4b730d7ba8e83a4bdadc8691cb"),
+                bytes.fromhex("ef3b0865c7a05f79772a3189ddfc8515ec3e1844"),
+                bytes.fromhex("43dad4d96edf2fb4f77f0dbf72113b8fe8b5b664"),
+                bytes.fromhex("9cafd9348f3a7729c2ef0b9b149ba421589427f0"),
+                # ExtID
+                bytes.fromhex("486e20ccedc221075b12abbb607a888875db41f6"),
+                bytes.fromhex("fa730cf0bb415e1e921e430984bdcddd9c8eea4a"),
+            ]
+        )
+    expected_unique_keys.extend(
+        [
+            {"url": "https://github.com/user1/repo1"},
+            {
+                "origin": "https://github.com/user1/repo1",
+                "date": "2015-01-01 23:00:00+00:00",
+            },
+            {
+                "origin": "https://github.com/user1/repo1",
+                "date": "2017-01-01 23:00:00+00:00",
+            },
+            {
+                "origin": "https://github.com/user1/repo1",
+                "visit": "1",
+                "date": "2015-01-01 23:00:00+00:00",
+            },
+            {
+                "origin": "https://github.com/user1/repo1",
+                "visit": "2",
+                "date": "2017-01-01 23:00:00+00:00",
+            },
+            {"url": "https://github.com/user2/repo1"},
+            {
+                "origin": "https://github.com/user2/repo1",
+                "date": "2015-01-01 23:00:00+00:00",
+            },
+            {
+                "origin": "https://github.com/user2/repo1",
+                "visit": "1",
+                "date": "2015-01-01 23:00:00+00:00",
+            },
+        ]
+    )
+    assert obj_unique_keys == expected_unique_keys
