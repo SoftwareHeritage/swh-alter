@@ -18,7 +18,6 @@ import yaml
 from swh.model.swhids import ExtendedSWHID
 
 from ..cli import (
-    DEFAULT_CONFIG,
     alter_cli_group,
     extract_content,
     info,
@@ -50,6 +49,27 @@ from .test_recovery_bundle import (
 from .test_recovery_bundle import sample_recovery_bundle_path  # noqa: F401
 from .test_removable import inventory_from_forked_origin  # noqa: F401
 from .test_removable import storage_with_references_from_forked_origin  # noqa: F401
+
+DEFAULT_CONFIG = {
+    "storage": {
+        "cls": "memory",
+        "objstorage": {
+            "cls": "memory",
+        },
+    },
+    "graph": {
+        "url": "http://granet.internal.softwareheritage.org:5009/graph",
+        # timeout is in seconds
+        # see https://requests.readthedocs.io/en/latest/user/advanced/#timeouts
+        "timeout": 10,
+    },
+    "recovery_bundles": {
+        "secret_sharing": {
+            "minimum_required_groups": 2,
+            "groups": {},
+        }
+    },
+}
 
 
 @pytest.fixture

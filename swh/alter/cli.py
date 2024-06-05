@@ -80,29 +80,6 @@ def progressbar(
     return cast("ProgressBar[V]", bar)
 
 
-DEFAULT_CONFIG = {
-    "storage": {
-        "cls": "postgresql",
-        "db": "dbname=softwareheritage host=db.internal.softwareheritage.org user=guest",
-        "objstorage": {
-            "cls": "memory",
-        },
-    },
-    "graph": {
-        "url": "http://granet.internal.softwareheritage.org:5009/graph",
-        # timeout is in seconds
-        # see https://requests.readthedocs.io/en/latest/user/advanced/#timeouts
-        "timeout": 10,
-    },
-    "recovery_bundles": {
-        "secret_sharing": {
-            "minimum_required_groups": 2,
-            "groups": {},
-        }
-    },
-}
-
-
 @swh_cli_group.group(name="alter", context_settings=CONTEXT_SETTINGS)
 @click.pass_context
 def alter_cli_group(ctx):
@@ -179,7 +156,10 @@ def alter_cli_group(ctx):
     from .operations import logger as operations_logger
     from .recovery_bundle import logger as recovery_bundle_logger
 
-    conf = config.load_from_envvar(default_config=DEFAULT_CONFIG)
+    try:
+        conf = config.load_from_envvar()
+    except AssertionError as ex:
+        raise click.ClickException(ex.args[0])
     ctx.ensure_object(dict)
     ctx.obj["config"] = conf
 
