@@ -443,9 +443,7 @@ class Marker:
         # Origins never have any inbound edges
         if vertex["swhid"].object_type == ObjectType.ORIGIN:
             return False
-        # We use a set of str as an optimization because
-        # swh.graph API will return SWHIDs as str
-        known_predecessors = {str(pred["swhid"]) for pred in vertex.predecessors()}
+        known_predecessors = {pred["swhid"] for pred in vertex.predecessors()}
         # We only need to find one extra edge from the ones we already know
         search_limit = len(known_predecessors) + 1
         for pred in chain(
@@ -457,8 +455,9 @@ class Marker:
             # of their source code.)
             # We use string matching here because the graph API returns
             # str objects and not ExtendedSWHID objects.
-            if vertex["swhid"].object_type == ObjectType.REVISION and pred.startswith(
-                "swh:1:dir:"
+            if (
+                vertex["swhid"].object_type == ObjectType.REVISION
+                and pred.object_type == ObjectType.DIRECTORY
             ):
                 logger.info(
                     "Skipping predecessor %s of %s as it's a submodule",
@@ -477,7 +476,7 @@ class Marker:
 
     def inbound_edges_from_graph(
         self, vertex: Vertex, search_limit: int
-    ) -> Iterator[str]:
+    ) -> Iterator[ExtendedSWHID]:
         # We need to check if the object still exists in storage, as it
         # might have been removed since the graph was exported.
         try:
@@ -492,27 +491,22 @@ class Marker:
                     )
                 ]
 
-            yield from map(
-                str, get_filtered_objects(self._storage, get_objects, search_limit)
-            )
+            yield from get_filtered_objects(self._storage, get_objects, search_limit)
         except GraphArgumentException:
             yield from ()
 
     def inbound_edges_from_storage(
         self, vertex: Vertex, search_limit: int
-    ) -> Iterator[str]:
+    ) -> Iterator[ExtendedSWHID]:
         # We have to filter objects missing that can be returned by
         # `object_find_recent_references()`. As we don’t clean up
         # the `object_references` table, this happens if we remove
         # an object in a first pass, before trying to remove one
         # of its targets at a later time.
-        yield from map(
-            str,
-            get_filtered_objects(
-                self._storage,
-                partial(self._storage.object_find_recent_references, vertex["swhid"]),
-                search_limit,
-            ),
+        yield from get_filtered_objects(
+            self._storage,
+            partial(self._storage.object_find_recent_references, vertex["swhid"]),
+            search_limit,
         )
 
     def mark_candidates(self):
