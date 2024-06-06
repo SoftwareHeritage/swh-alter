@@ -30,6 +30,14 @@ from .subgraph import Subgraph
 logger = logging.getLogger(__name__)
 
 
+class StuckInventoryException(Exception):
+    def __init__(self, swhids: List[ExtendedSWHID]):
+        self.swhids = swhids
+
+
+ITERATIONS_BEFORE_FORFEIT = 6
+
+
 class InventorySubgraph(Subgraph):
     """A subgraph holding an inventory of all candidates for removal
 
@@ -98,10 +106,21 @@ class Lister:
         self._subgraph.add_swhid(root, complete=False)
         # Iterate until everything has been fetched
         logger.debug("inventory_candidates: added %s", root)
+        stats_history: List[Tuple[int, int]] = []
         for remaining in self._iter_inventory_candidates():
+            total = len(self._subgraph.vs)
+            stats_history.append((total, remaining))
+            # Does the last iterations always have the same stats?
+            if (
+                len(stats_history) > ITERATIONS_BEFORE_FORFEIT
+                and len(set(stats_history[-ITERATIONS_BEFORE_FORFEIT:])) == 1
+            ):
+                raise StuckInventoryException(
+                    [vertex["swhid"] for vertex in self._subgraph.select_incomplete()]
+                )
             logger.debug(
                 "inventory_candidates: %4d SWHIDS known, %4d need to be looked up.",
-                len(self._subgraph.vs),
+                total,
                 remaining,
             )
 

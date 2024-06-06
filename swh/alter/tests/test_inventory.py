@@ -24,7 +24,12 @@ from swh.model.model import (
 )
 from swh.model.swhids import ExtendedSWHID
 
-from ..inventory import InventorySubgraph, Lister, get_raw_extrinsic_metadata
+from ..inventory import (
+    InventorySubgraph,
+    Lister,
+    StuckInventoryException,
+    get_raw_extrinsic_metadata,
+)
 from .conftest import h
 
 logger = logging.getLogger(__name__)
@@ -390,6 +395,33 @@ def test_inventory_candidates(request, caplog, fixture, max_iterations):
         assert len(log_lines) <= max_iterations
         caplog.clear()
     assert_subgraph_is_full_from_forked_origin(lister.subgraph)
+
+
+def test_inventory_candidates_stuck(
+    caplog, sample_populated_storage, graph_client_with_both_origins
+):
+    subgraph = InventorySubgraph()
+    # Add an incomplete node which does not exist neither in storage nor in graph
+    inexistent_swhid = ExtendedSWHID.from_string(
+        "swh:1:rev:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    )
+    subgraph.add_swhid(inexistent_swhid, complete=False)
+    lister = Lister(
+        sample_populated_storage,
+        graph_client_with_both_origins,
+        subgraph,
+    )
+    with caplog.at_level(logging.DEBUG):
+        with pytest.raises(StuckInventoryException) as exc_info:
+            lister.inventory_candidates(graph_dataset.FORKED_ORIGIN.swhid())
+    assert exc_info.value.swhids == [inexistent_swhid]
+    assert (
+        sum(
+            "22 SWHIDS known,    1 need to be looked up" in msg
+            for msg in caplog.messages
+        )
+        > 1
+    )
 
 
 #

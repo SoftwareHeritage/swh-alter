@@ -327,6 +327,7 @@ def remove(
 ) -> None:
     """Remove the given SWHIDs or URLs from the archive."""
 
+    from .inventory import StuckInventoryException
     from .operations import RemoverError
     from .recovery_bundle import SecretSharing
 
@@ -383,6 +384,15 @@ def remove(
         click.secho(f"Recovery bundle decryption key: {decryption_key}", fg="blue")
     except RemoverError as e:
         click.secho(e.args[0], err=True, fg="red")
+        ctx.exit(1)
+    except StuckInventoryException as e:
+        click.secho(
+            "Inventory phase got stuck. Unable to look up the following SWHIDs:\n",
+            err=True,
+            fg="red",
+            bold=True,
+        )
+        click.secho("\n".join(f"- {swhid}" for swhid in e.swhids), err=True, fg="red")
         ctx.exit(1)
 
     if dry_run == "stop-before-removal":

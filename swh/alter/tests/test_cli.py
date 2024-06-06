@@ -28,6 +28,7 @@ from ..cli import (
     resume_removal,
     rollover,
 )
+from ..inventory import StuckInventoryException
 from ..operations import Remover
 from ..recovery_bundle import AgeSecretKey, age_decrypt
 from .conftest import (
@@ -314,6 +315,40 @@ def test_cli_remove_errors_when_graph_is_down(
     )
     assert result.exit_code == 1, result.output
     assert "Unable to connect to the graph server" in result.output
+
+
+def test_cli_remove_errors_when_inventory_is_stuck(
+    mocker, mocked_external_resources, remove_config
+):
+    mocker.patch.object(
+        Remover,
+        "get_removable",
+        side_effect=StuckInventoryException(
+            [
+                ExtendedSWHID.from_string(
+                    "swh:1:ori:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                )
+            ]
+        ),
+    )
+    runner = CliRunner(mix_stderr=False)
+    result = runner.invoke(
+        remove,
+        [
+            "--identifier",
+            "test",
+            "--recovery-bundle",
+            "/nonexistent",
+            "--dry-run=stop-before-recovery-bundle",
+            "https://example.com/swh/graph",
+            "swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165",
+        ],
+        obj={"config": remove_config},
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 1, result.output
+    assert "Inventory phase got stuck" in result.stderr
+    assert "swh:1:ori:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" in result.stderr
 
 
 def test_cli_remove_origin_conversions(
