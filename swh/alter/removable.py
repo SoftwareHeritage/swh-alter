@@ -479,9 +479,7 @@ class Marker:
         self, vertex: Vertex, search_limit: int
     ) -> Iterator[str]:
         # We need to check if the object still exists in storage, as it
-        # might have been removed since the graph was exported. We
-        # work on objects grouped by object types for efficiency.
-
+        # might have been removed since the graph was exported.
         try:
             swhids_from_graph = [
                 ExtendedSWHID.from_string(str)
@@ -492,21 +490,8 @@ class Marker:
                 )
             ]
 
-            def collector(swhids: Iterable[ExtendedSWHID]) -> Set[bytes]:
-                return {swhid.object_id for swhid in swhids}
-
-            handlers: Dict[ObjectType, Callable[[set[bytes]], Iterable[str]]] = {
-                ObjectType.CONTENT: self._filter_missing_contents,
-                ObjectType.DIRECTORY: self._filter_missing_directories,
-                ObjectType.REVISION: self._filter_missing_revisions,
-                ObjectType.RELEASE: self._filter_missing_releases,
-                ObjectType.SNAPSHOT: self._filter_missing_snapshots,
-                ObjectType.ORIGIN: self._filter_missing_origins,
-            }
-            swhids_filtered_by_storage = list(
-                iter_swhids_grouped_by_type(
-                    swhids_from_graph, handlers=handlers, collector=collector
-                )
+            swhids_filtered_by_storage = self.filter_objects_missing_from_storage(
+                swhids_from_graph
             )
             filtered_count = len(swhids_from_graph) - len(swhids_filtered_by_storage)
             if len(swhids_from_graph) >= search_limit and filtered_count > 0:
@@ -583,15 +568,43 @@ class Marker:
             if d is not None
         )
 
+    def filter_objects_missing_from_storage(
+        self, swhids: Iterable[ExtendedSWHID]
+    ) -> List[str]:
+        def collector(swhids: Iterable[ExtendedSWHID]) -> Set[bytes]:
+            return {swhid.object_id for swhid in swhids}
+
+        handlers: Dict[ObjectType, Callable[[set[bytes]], Iterable[str]]] = {
+            ObjectType.CONTENT: self._filter_missing_contents,
+            ObjectType.DIRECTORY: self._filter_missing_directories,
+            ObjectType.REVISION: self._filter_missing_revisions,
+            ObjectType.RELEASE: self._filter_missing_releases,
+            ObjectType.SNAPSHOT: self._filter_missing_snapshots,
+            ObjectType.ORIGIN: self._filter_missing_origins,
+        }
+        return list(
+            iter_swhids_grouped_by_type(swhids, handlers=handlers, collector=collector)
+        )
+
     def inbound_edges_from_storage(
         self, vertex: Vertex, search_limit: int
     ) -> Iterator[str]:
-        yield from map(
-            str,
-            self._storage.object_find_recent_references(
-                vertex["swhid"], limit=search_limit
-            ),
+        # We have to filter objects missing that can be returned by
+        # `object_find_recent_references()`. As we don’t clean up
+        # the `object_references` table, this happens if we remove
+        # an object in a first pass, before trying to remove one
+        # of its targets at a later time.
+        inbound_swhids = self._storage.object_find_recent_references(
+            vertex["swhid"], limit=search_limit
         )
+        filtered_swhids = self.filter_objects_missing_from_storage(inbound_swhids)
+        filtered_count = len(inbound_swhids) - len(filtered_swhids)
+        if len(inbound_swhids) >= search_limit and filtered_count > 0:
+            yield from self.inbound_edges_from_storage(
+                vertex, search_limit + filtered_count
+            )
+        else:
+            yield from filtered_swhids
 
     def mark_candidates(self):
         for index, vid in enumerate(self._subgraph.topological_sorting()):

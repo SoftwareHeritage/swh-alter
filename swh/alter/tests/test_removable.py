@@ -8,6 +8,7 @@ from typing import List
 
 import pytest
 
+import swh.graph.example_dataset as graph_dataset
 from swh.graph.example_dataset import FORKED_ORIGIN, INITIAL_ORIGIN
 from swh.model.swhids import ExtendedSWHID
 
@@ -17,6 +18,7 @@ from .test_inventory import (  # noqa: F401
     directory_6_with_multiple_entries_pointing_to_the_same_content,
     snapshot_20_with_multiple_branches_pointing_to_the_same_head,
 )
+from .test_inventory import empty_graph_client  # noqa: F401
 from .test_inventory import graph_client_with_both_origins  # noqa: F401
 from .test_inventory import graph_client_with_only_initial_origin  # noqa: F401
 from .test_inventory import graph_client_with_submodule  # noqa: F401
@@ -112,6 +114,14 @@ def inventory_from_forked_origin():
     g.add_edge(v_dir_02, v_cnt_01)
     write_dot_if_requested(g, "inventory_from_forked_origin.dot")
     return g
+
+
+@pytest.fixture
+def storage_with_record_references(swh_storage_backend_config):
+    """Use a record references proxy to keep close to production settings"""
+    from swh.storage import get_storage
+
+    return get_storage(cls="record_references", storage=swh_storage_backend_config)
 
 
 @pytest.fixture
@@ -235,7 +245,7 @@ def test_mark_removable_on_forked_origin(
     }
 
 
-def test_mark_removable_on_initial_origin_with_forked_origin_removed(
+def test_mark_removable_on_initial_origin_with_forked_origin_removed_and_oudated_graph(
     storage_with_forked_origin_removed,  # noqa: F811
     graph_client_with_both_origins,  # noqa: F811
     inventory_from_initial_origin,
@@ -259,4 +269,39 @@ def test_mark_removable_on_initial_origin_with_forked_origin_removed(
         "swh:1:cnt:0000000000000000000000000000000000000005",
         "swh:1:cnt:0000000000000000000000000000000000000004",
         "swh:1:cnt:0000000000000000000000000000000000000001",
+    }
+
+
+def test_mark_removable_on_stale_object_references_table(
+    storage_with_record_references,  # noqa: F811
+    empty_graph_client,  # noqa: F811
+    inventory_from_initial_origin,
+):
+    storage = storage_with_record_references
+
+    # Ensure we have the right revision pointing to the right directory
+    directory = graph_dataset.DIRECTORIES[0]
+    revision = graph_dataset.REVISIONS[0]
+    assert directory.id == revision.directory
+
+    result = storage.revision_add([revision])
+    assert result == {"revision:add": 1, "object_reference:add": 1}
+    result = storage.directory_add([directory])
+    assert result == {"directory:add": 1, "object_reference:add": 1}
+
+    result = storage.object_delete([revision.swhid().to_extended()])
+    assert result["revision:delete"] == 1
+
+    # Now the `object_references` table is outdated because it
+    # contains a stale entry with “revision → directory”.
+    # What if we try to remove the directory now?
+    inventory_subgraph = InventorySubgraph()
+    inventory_subgraph.add_swhid(str(directory.swhid()))
+    subgraph = mark_removable(
+        storage,
+        empty_graph_client,
+        inventory_subgraph,
+    )
+    assert {str(swhid) for swhid in subgraph.removable_swhids()} == {
+        str(directory.swhid())
     }

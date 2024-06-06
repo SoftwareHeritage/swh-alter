@@ -419,6 +419,13 @@ def sample_populated_storage(
 
 
 @pytest.fixture
+def empty_graph_client(naive_graph_client):
+    from swh.graph.http_naive_client import NaiveClient
+
+    return NaiveClient(nodes=[], edges=[])
+
+
+@pytest.fixture
 def graph_client_with_only_initial_origin(naive_graph_client):
     from swh.graph.http_naive_client import NaiveClient
 
@@ -725,11 +732,8 @@ def lister_with_full_graph(lister_with_populated_storage):
 
 
 @pytest.fixture
-def lister_with_empty_graph(sample_populated_storage):
-    from swh.graph.http_naive_client import NaiveClient
-
-    graph_client = NaiveClient(nodes=[], edges=[])
-    return Lister(sample_populated_storage, graph_client, InventorySubgraph())
+def lister_with_empty_graph(sample_populated_storage, empty_graph_client):
+    return Lister(sample_populated_storage, empty_graph_client, InventorySubgraph())
 
 
 @pytest.fixture
