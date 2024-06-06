@@ -4,11 +4,24 @@
 # See top-level LICENSE file for more information
 
 from collections.abc import Mapping
+from functools import partial
+import hashlib
 import itertools
 import operator
-from typing import Callable, Dict, Iterable, Optional, TypeVar, cast
+from typing import (
+    Callable,
+    Collection,
+    Dict,
+    Iterable,
+    List,
+    Optional,
+    Set,
+    TypeVar,
+    cast,
+)
 
 from swh.model.swhids import ExtendedObjectType, ExtendedSWHID
+from swh.storage.interface import StorageInterface
 
 T = TypeVar("T")
 C = TypeVar("C", covariant=True)
@@ -54,3 +67,120 @@ def iter_swhids_grouped_by_type(
         sorted_swhids, key=operator.attrgetter("object_type")
     ):
         yield from handlers[object_type](collector_func(grouped_swhids))
+
+
+def _filter_missing_contents(
+    storage: StorageInterface, requested_object_ids: Set[bytes]
+) -> Iterable[ExtendedSWHID]:
+    missing_object_ids = set(
+        storage.content_missing_per_sha1_git(list(requested_object_ids))
+    )
+    yield from (
+        ExtendedSWHID(object_type=ExtendedObjectType.CONTENT, object_id=object_id)
+        for object_id in requested_object_ids - missing_object_ids
+    )
+
+
+def _filter_missing_directories(
+    storage: StorageInterface, requested_object_ids: Set[bytes]
+) -> Iterable[ExtendedSWHID]:
+    missing_object_ids = set(storage.directory_missing(list(requested_object_ids)))
+    yield from (
+        ExtendedSWHID(object_type=ExtendedObjectType.DIRECTORY, object_id=object_id)
+        for object_id in requested_object_ids - missing_object_ids
+    )
+
+
+def _filter_missing_revisions(
+    storage: StorageInterface, requested_object_ids: Set[bytes]
+) -> Iterable[ExtendedSWHID]:
+    missing_object_ids = set(storage.revision_missing(list(requested_object_ids)))
+    yield from (
+        ExtendedSWHID(object_type=ExtendedObjectType.REVISION, object_id=object_id)
+        for object_id in requested_object_ids - missing_object_ids
+    )
+
+
+def _filter_missing_releases(
+    storage: StorageInterface, requested_object_ids: Set[bytes]
+) -> Iterable[ExtendedSWHID]:
+    missing_object_ids = set(storage.release_missing(list(requested_object_ids)))
+    yield from (
+        ExtendedSWHID(object_type=ExtendedObjectType.RELEASE, object_id=object_id)
+        for object_id in requested_object_ids - missing_object_ids
+    )
+
+
+def _filter_missing_snapshots(
+    storage: StorageInterface, requested_object_ids: Set[bytes]
+) -> Iterable[ExtendedSWHID]:
+    missing_object_ids = set(storage.snapshot_missing(list(requested_object_ids)))
+    yield from (
+        ExtendedSWHID(object_type=ExtendedObjectType.SNAPSHOT, object_id=object_id)
+        for object_id in requested_object_ids - missing_object_ids
+    )
+
+
+def _filter_missing_origins(
+    storage: StorageInterface, requested_object_ids: Set[bytes]
+) -> Iterable[ExtendedSWHID]:
+    # XXX: We should add a better method in swh.storage
+    yield from (
+        ExtendedSWHID(
+            object_type=ExtendedObjectType.ORIGIN,
+            object_id=hashlib.sha1(d["url"].encode("utf-8")).digest(),
+        )
+        for d in storage.origin_get_by_sha1(list(requested_object_ids))
+        if d is not None
+    )
+
+
+def filter_objects_missing_from_storage(
+    storage: StorageInterface, swhids: Iterable[ExtendedSWHID]
+) -> List[ExtendedSWHID]:
+    def collector(swhids: Iterable[ExtendedSWHID]) -> Set[bytes]:
+        return {swhid.object_id for swhid in swhids}
+
+    handlers: Dict[
+        ExtendedObjectType, Callable[[set[bytes]], Iterable[ExtendedSWHID]]
+    ] = {
+        ExtendedObjectType.CONTENT: partial(_filter_missing_contents, storage),
+        ExtendedObjectType.DIRECTORY: partial(_filter_missing_directories, storage),
+        ExtendedObjectType.REVISION: partial(_filter_missing_revisions, storage),
+        ExtendedObjectType.RELEASE: partial(_filter_missing_releases, storage),
+        ExtendedObjectType.SNAPSHOT: partial(_filter_missing_snapshots, storage),
+        ExtendedObjectType.ORIGIN: partial(_filter_missing_origins, storage),
+    }
+    return list(
+        iter_swhids_grouped_by_type(swhids, handlers=handlers, collector=collector)
+    )
+
+
+def get_filtered_objects(
+    storage: StorageInterface,
+    get_objects: Callable[[int], Collection[ExtendedSWHID]],
+    max_results: int,
+) -> Collection[ExtendedSWHID]:
+    """Call `get_objects(limit)` filtering out results with
+    `filter_objects_missing_from_storage`.
+
+    If some objects were filtered, call the function again with an increasing
+    limit until `max_results` objects are returned.
+    """
+    limit = max_results
+    while True:
+        results = get_objects(limit)
+        filtered_results = filter_objects_missing_from_storage(storage, results)
+        filtered_count = len(results) - len(filtered_results)
+
+        if len(filtered_results) >= max_results:
+            return filtered_results[:max_results]
+        elif len(results) >= limit and filtered_count > 0:
+            # Some results have been filtered out and the initial call has
+            # reached the object limit, which means that we might have missed
+            # some extra entries. We need to increase the limit, at least to
+            # `limit + filtered_count`, doubling that will reach an endpoint
+            # faster
+            limit = 2 * (limit + filtered_count)
+        else:
+            return filtered_results

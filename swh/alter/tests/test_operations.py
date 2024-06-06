@@ -302,7 +302,7 @@ def test_remover_have_new_references_outside_removed(
         "object_find_recent_references",
         wraps=lambda s, _: [
             ExtendedSWHID.from_string(
-                "swh:1:rev:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                "swh:1:rev:0000000000000000000000000000000000000003"
             )
         ]
         if s.object_type == ExtendedObjectType.DIRECTORY
@@ -367,6 +367,45 @@ def test_remover_have_new_references_nothing_new(
     result = remover.have_new_references(
         [ExtendedSWHID.from_string(swhid) for swhid in swhids]
     )
+    assert result is False
+
+
+def test_remover_have_new_references_missing_from_storage(
+    mocker,
+    storage_with_references_from_forked_origin,  # noqa:F811
+    remover,
+):
+    storage = storage_with_references_from_forked_origin
+    swhids = [
+        "swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165",
+        "swh:1:snp:0000000000000000000000000000000000000022",
+        "swh:1:rel:0000000000000000000000000000000000000021",
+        "swh:1:rev:0000000000000000000000000000000000000018",
+        "swh:1:rev:0000000000000000000000000000000000000013",
+        "swh:1:dir:0000000000000000000000000000000000000017",
+        "swh:1:cnt:0000000000000000000000000000000000000015",
+        "swh:1:cnt:0000000000000000000000000000000000000014",
+    ]
+    # Patch `object_find_recent_references()` to return a SWHID
+    # that does not exist in the storage. This imitates a stale
+    # entry in the `object_references` table.
+    mocker.patch.object(
+        storage,
+        "object_find_recent_references",
+        wraps=lambda s, _: [
+            ExtendedSWHID.from_string(
+                "swh:1:rev:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            )
+        ]
+        if s.object_type == ExtendedObjectType.DIRECTORY
+        else [],
+    )
+    result = remover.have_new_references(
+        [ExtendedSWHID.from_string(swhid) for swhid in swhids]
+    )
+    # As the reference actually does not exist, this means
+    # no new references have actually been made since we
+    # started the process.
     assert result is False
 
 

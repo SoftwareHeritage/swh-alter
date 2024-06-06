@@ -1,10 +1,11 @@
-# Copyright (C) 2023 The Software Heritage developers
+# Copyright (C) 2023-2024 The Software Heritage developers
 # See the AUTHORS file at the top-level directory of this distribution
 # License: GNU General Public License version 3, or any later version
 # See top-level LICENSE file for more information
 
 import collections
 from datetime import datetime
+from functools import partial
 import itertools
 import logging
 from typing import Dict, List, Optional, TextIO, Tuple, cast
@@ -34,6 +35,7 @@ from .recovery_bundle import (
     generate_age_keypair,
 )
 from .removable import mark_removable
+from .utils import get_filtered_objects
 
 logger = logging.getLogger(__name__)
 
@@ -356,8 +358,10 @@ class Remover:
             for swhid in bar:
                 if swhid.object_type == ExtendedObjectType.ORIGIN:
                     continue
-                recent_references = self.storage.object_find_recent_references(
-                    swhid, 9_999_999
+                recent_references = get_filtered_objects(
+                    self.storage,
+                    partial(self.storage.object_find_recent_references, swhid),
+                    len(swhids) + 1,
                 )
                 if not swhids.issuperset(set(recent_references)):
                     return True

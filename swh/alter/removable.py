@@ -9,10 +9,10 @@ This module implements the marking stage of the
 """
 
 from enum import Enum, auto
-import hashlib
+from functools import partial
 from itertools import chain
 import logging
-from typing import Callable, Dict, Iterable, Iterator, List, Optional, Set
+from typing import Iterator, List, Optional, Set
 
 from igraph import Vertex
 
@@ -24,7 +24,7 @@ from swh.storage.interface import StorageInterface
 from .inventory import InventorySubgraph
 from .progressbar import ProgressBar, ProgressBarInit, no_progressbar
 from .subgraph import Subgraph
-from .utils import iter_swhids_grouped_by_type
+from .utils import get_filtered_objects
 
 logger = logging.getLogger(__name__)
 
@@ -481,110 +481,22 @@ class Marker:
         # We need to check if the object still exists in storage, as it
         # might have been removed since the graph was exported.
         try:
-            swhids_from_graph = [
-                ExtendedSWHID.from_string(str)
-                for str in self._graph_client.neighbors(
-                    str(vertex["swhid"]),
-                    direction="backward",
-                    max_matching_nodes=search_limit,
-                )
-            ]
 
-            swhids_filtered_by_storage = self.filter_objects_missing_from_storage(
-                swhids_from_graph
+            def get_objects(limit: int) -> List[ExtendedSWHID]:
+                return [
+                    ExtendedSWHID.from_string(str)
+                    for str in self._graph_client.neighbors(
+                        str(vertex["swhid"]),
+                        direction="backward",
+                        max_matching_nodes=search_limit,
+                    )
+                ]
+
+            yield from map(
+                str, get_filtered_objects(self._storage, get_objects, search_limit)
             )
-            filtered_count = len(swhids_from_graph) - len(swhids_filtered_by_storage)
-            if len(swhids_from_graph) >= search_limit and filtered_count > 0:
-                yield from self.inbound_edges_from_graph(
-                    vertex, search_limit + filtered_count
-                )
-            else:
-                yield from swhids_filtered_by_storage
         except GraphArgumentException:
             yield from ()
-
-    def _filter_missing_contents(
-        self, requested_object_ids: Set[bytes]
-    ) -> Iterable[str]:
-        missing_object_ids = set(
-            self._storage.content_missing_per_sha1_git(list(requested_object_ids))
-        )
-        yield from (
-            str(ExtendedSWHID(object_type=ObjectType.CONTENT, object_id=object_id))
-            for object_id in requested_object_ids - missing_object_ids
-        )
-
-    def _filter_missing_directories(
-        self, requested_object_ids: Set[bytes]
-    ) -> Iterable[str]:
-        missing_object_ids = set(
-            self._storage.directory_missing(list(requested_object_ids))
-        )
-        yield from (
-            str(ExtendedSWHID(object_type=ObjectType.DIRECTORY, object_id=object_id))
-            for object_id in requested_object_ids - missing_object_ids
-        )
-
-    def _filter_missing_revisions(
-        self, requested_object_ids: Set[bytes]
-    ) -> Iterable[str]:
-        missing_object_ids = set(
-            self._storage.revision_missing(list(requested_object_ids))
-        )
-        yield from (
-            str(ExtendedSWHID(object_type=ObjectType.REVISION, object_id=object_id))
-            for object_id in requested_object_ids - missing_object_ids
-        )
-
-    def _filter_missing_releases(
-        self, requested_object_ids: Set[bytes]
-    ) -> Iterable[str]:
-        missing_object_ids = set(
-            self._storage.release_missing(list(requested_object_ids))
-        )
-        yield from (
-            str(ExtendedSWHID(object_type=ObjectType.RELEASE, object_id=object_id))
-            for object_id in requested_object_ids - missing_object_ids
-        )
-
-    def _filter_missing_snapshots(
-        self, requested_object_ids: Set[bytes]
-    ) -> Iterable[str]:
-        missing_object_ids = set(
-            self._storage.snapshot_missing(list(requested_object_ids))
-        )
-        yield from (
-            str(ExtendedSWHID(object_type=ObjectType.SNAPSHOT, object_id=object_id))
-            for object_id in requested_object_ids - missing_object_ids
-        )
-
-    def _filter_missing_origins(
-        self, requested_object_ids: Set[bytes]
-    ) -> Iterable[str]:
-        # XXX: We should add a better method in swh.storage
-        yield from (
-            f"swh:1:ori:{hashlib.sha1(d['url'].encode('utf-8')).hexdigest()}"
-            for d in self._storage.origin_get_by_sha1(list(requested_object_ids))
-            if d is not None
-        )
-
-    def filter_objects_missing_from_storage(
-        self, swhids: Iterable[ExtendedSWHID]
-    ) -> List[str]:
-        def collector(swhids: Iterable[ExtendedSWHID]) -> Set[bytes]:
-            return {swhid.object_id for swhid in swhids}
-
-        handlers: Dict[ObjectType, Callable[[set[bytes]], Iterable[str]]] = {
-            ObjectType.CONTENT: self._filter_missing_contents,
-            ObjectType.DIRECTORY: self._filter_missing_directories,
-            ObjectType.REVISION: self._filter_missing_revisions,
-            ObjectType.RELEASE: self._filter_missing_releases,
-            ObjectType.SNAPSHOT: self._filter_missing_snapshots,
-            ObjectType.ORIGIN: self._filter_missing_origins,
-        }
-        return list(
-            iter_swhids_grouped_by_type(swhids, handlers=handlers, collector=collector)
-        )
 
     def inbound_edges_from_storage(
         self, vertex: Vertex, search_limit: int
@@ -594,17 +506,14 @@ class Marker:
         # the `object_references` table, this happens if we remove
         # an object in a first pass, before trying to remove one
         # of its targets at a later time.
-        inbound_swhids = self._storage.object_find_recent_references(
-            vertex["swhid"], limit=search_limit
+        yield from map(
+            str,
+            get_filtered_objects(
+                self._storage,
+                partial(self._storage.object_find_recent_references, vertex["swhid"]),
+                search_limit,
+            ),
         )
-        filtered_swhids = self.filter_objects_missing_from_storage(inbound_swhids)
-        filtered_count = len(inbound_swhids) - len(filtered_swhids)
-        if len(inbound_swhids) >= search_limit and filtered_count > 0:
-            yield from self.inbound_edges_from_storage(
-                vertex, search_limit + filtered_count
-            )
-        else:
-            yield from filtered_swhids
 
     def mark_candidates(self):
         for index, vid in enumerate(self._subgraph.topological_sorting()):
