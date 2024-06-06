@@ -656,6 +656,7 @@ class RecoveryBundle:
                 for chunk_it in grouper(source(), RECOVERY_BUNDLE_RESTORE_CHUNK_SIZE):
                     chunk = list(chunk_it)
                     result += add(chunk)
+                    result += storage.flush()
                     bar.update(n_steps=len(chunk))
 
         log_lines = [

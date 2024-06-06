@@ -83,6 +83,12 @@ def manifest_dict():
     }
 
 
+@pytest.fixture
+def swh_storage_backend_config(swh_storage_backend_config):
+    """Use a buffered storage to keep close to production settings"""
+    return {"cls": "buffer", "storage": swh_storage_backend_config}
+
+
 def test_manifest_load_success(manifest_dict):
     assert Manifest.load(yaml.dump(manifest_dict))
 
@@ -550,6 +556,7 @@ def sample_populated_storage(swh_storage, sample_data):
     swh_storage.raw_extrinsic_metadata_add(sample_data.content_metadata)
     swh_storage.raw_extrinsic_metadata_add(sample_data.origin_metadata)
     swh_storage.extid_add(sample_data.extids)
+    swh_storage.flush()
     return swh_storage
 
 
