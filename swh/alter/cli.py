@@ -37,7 +37,6 @@ class SwhidOrUrlParamType(click.ParamType):
             except ValidationError:
                 self.fail(f"expected extended SWHID, got {value!r}", param, ctx)
         else:
-            click.secho(f"Assuming {value} is an origin URL.", fg="cyan", err=True)
             sha1 = hashlib.sha1(value.encode("utf-8")).hexdigest()
             swhid = ExtendedSWHID.from_string(f"swh:1:ori:{sha1}")
             return swhid
