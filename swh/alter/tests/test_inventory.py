@@ -1,27 +1,19 @@
-# Copyright (C) 2023 The Software Heritage developers
+# Copyright (C) 2023-2024 The Software Heritage developers
 # See the AUTHORS file at the top-level directory of this distribution
 # License: GNU General Public License version 3, or any later version
 # See top-level LICENSE file for more information
 
 import datetime
 import logging
-from typing import Iterator
 
 import pytest
 
 import swh.graph.example_dataset as graph_dataset
 from swh.model.model import (
-    Content,
     Directory,
     DirectoryEntry,
-    ExtID,
-    MetadataAuthority,
-    MetadataAuthorityType,
-    MetadataFetcher,
-    Origin,
     OriginVisit,
     OriginVisitStatus,
-    RawExtrinsicMetadata,
     Revision,
     RevisionType,
     Snapshot,
@@ -30,21 +22,16 @@ from swh.model.model import (
     Timestamp,
     TimestampWithTimezone,
 )
-from swh.model.swhids import CoreSWHID, ExtendedObjectType, ExtendedSWHID
-from swh.model.swhids import ObjectType as CoreSWHIDObjectType
+from swh.model.swhids import ExtendedSWHID
 
 from ..inventory import InventorySubgraph, Lister, get_raw_extrinsic_metadata
-from .test_subgraph import empty_subgraph, sample_data_subgraph  # noqa: F401
+from .conftest import h
 
 logger = logging.getLogger(__name__)
 
 
-def h(id: int, width=40) -> bytes:
-    return bytes.fromhex(f"{id:0{width}}")
-
-
 @pytest.fixture
-def sample_data_inventory(sample_data_subgraph):  # noqa: F811
+def sample_data_inventory(sample_data_subgraph):
     return InventorySubgraph.copy(sample_data_subgraph)
 
 
@@ -81,377 +68,6 @@ def lister_with_populated_storage(
     return Lister(
         sample_populated_storage, graph_client_with_both_origins, InventorySubgraph()
     )
-
-
-def fix_contents(contents: Iterator[Content]) -> Iterator[Content]:
-    """Recreate more complete Content objects using the same SWHIDs as the ones given.
-
-    The content objects provided by :py:module:`swh.graph.example_dataset` are not
-    complete enough to be inserted in a ``swh.storage``, so we make up what’s missing
-    here."""
-    for content in contents:
-        swhid_value = int.from_bytes(content.swhid().object_id, "big")
-        yield Content.from_dict(
-            {
-                "sha1": bytes.fromhex(f"{swhid_value:040x}"),
-                "sha1_git": bytes.fromhex(f"{swhid_value:040x}"),
-                "sha256": bytes.fromhex(f"{swhid_value:064x}"),
-                "blake2s256": bytes.fromhex(f"{swhid_value:064x}"),
-                "data": b"",
-                "length": 0,
-                "ctime": datetime.datetime.now(tz=datetime.timezone.utc),
-            }
-        )
-
-
-@pytest.fixture
-def snapshot_20_with_multiple_branches_pointing_to_the_same_head():
-    # No snapshot in the example dataset has multiple branches
-    # or tags pointing to the same head. It’s pretty common in
-    # the real world though, so let’s have a test with that.
-    return Snapshot(
-        id=h(20),
-        branches={
-            b"refs/heads/master": SnapshotBranch(
-                target=h(9), target_type=SnapshotTargetType.REVISION
-            ),
-            b"refs/heads/dev": SnapshotBranch(
-                target=h(9), target_type=SnapshotTargetType.REVISION
-            ),
-            b"refs/tags/v1.0": SnapshotBranch(
-                target=h(10), target_type=SnapshotTargetType.RELEASE
-            ),
-        },
-    )
-
-
-@pytest.fixture
-def directory_6_with_multiple_entries_pointing_to_the_same_content():
-    # No directories in the example dataset has multiple entries
-    # pointing to the same content. It can happen in the real world,
-    # so let’s test that situation.
-    return Directory(
-        id=h(6),
-        entries=(
-            DirectoryEntry(
-                name=b"README.md",
-                perms=0o100644,
-                type="file",
-                target=h(4),
-            ),
-            DirectoryEntry(
-                name=b"parser.c",
-                perms=0o100644,
-                type="file",
-                target=h(5),
-            ),
-            DirectoryEntry(
-                name=b"parser_backup.c",
-                perms=0o100644,
-                type="file",
-                target=h(5),
-            ),
-        ),
-    )
-
-
-@pytest.fixture
-def sample_extids():
-    extid_snp = ExtID(
-        target=CoreSWHID(object_type=CoreSWHIDObjectType.SNAPSHOT, object_id=h(20)),
-        extid_type="snapshot",
-        extid=h(20),
-    )
-    extid_rel1 = ExtID(
-        target=CoreSWHID(object_type=CoreSWHIDObjectType.RELEASE, object_id=h(10)),
-        extid_type="git",
-        extid=h(10),
-    )
-    extid_rel2 = ExtID(
-        target=CoreSWHID(object_type=CoreSWHIDObjectType.RELEASE, object_id=h(10)),
-        extid_type="drink_some",
-        extid=h(0xC0FFEE),
-    )
-    extid_rev = ExtID(
-        target=CoreSWHID(object_type=CoreSWHIDObjectType.REVISION, object_id=h(3)),
-        extid_type="revision",
-        extid=h(3),
-    )
-    extid_dir = ExtID(
-        target=CoreSWHID(object_type=CoreSWHIDObjectType.DIRECTORY, object_id=h(2)),
-        extid_type="directory",
-        extid=h(2),
-    )
-    extid_cnt = ExtID(
-        target=CoreSWHID(object_type=CoreSWHIDObjectType.CONTENT, object_id=h(1)),
-        extid_type="all_cats_are_beautiful",
-        extid=h(0xACAB),
-    )
-    extid_skipped_content = ExtID(
-        target=CoreSWHID(object_type=CoreSWHIDObjectType.CONTENT, object_id=h(15)),
-        extid_type="skipped_content",
-        extid=h(15),
-    )
-    return [
-        extid_snp,
-        extid_rel1,
-        extid_rel2,
-        extid_rev,
-        extid_dir,
-        extid_cnt,
-        extid_skipped_content,
-    ]
-
-
-@pytest.fixture
-def sample_metadata_authority_registry():
-    return MetadataAuthority(
-        type=MetadataAuthorityType.REGISTRY,
-        url="https://wikidata.example.org/",
-    )
-
-
-@pytest.fixture
-def sample_metadata_authority_deposit():
-    return MetadataAuthority(
-        type=MetadataAuthorityType.DEPOSIT_CLIENT,
-        url="http://hal.inria.example.com/",
-    )
-
-
-@pytest.fixture
-def sample_metadata_fetcher():
-    return MetadataFetcher(
-        name="swh-example",
-        version="0.0.1",
-    )
-
-
-@pytest.fixture
-def sample_raw_extrinsic_metadata_objects(
-    sample_metadata_authority_registry,
-    sample_metadata_authority_deposit,
-    sample_metadata_fetcher,
-):
-    emd_ori1 = RawExtrinsicMetadata(
-        target=graph_dataset.INITIAL_ORIGIN.swhid(),
-        discovery_date=datetime.datetime(
-            2015, 1, 1, 21, 0, 0, tzinfo=datetime.timezone.utc
-        ),
-        authority=sample_metadata_authority_registry,
-        fetcher=sample_metadata_fetcher,
-        format="json",
-        metadata=b'{"position": "initial"}',
-    )
-    emd_ori2 = RawExtrinsicMetadata(
-        target=graph_dataset.INITIAL_ORIGIN.swhid(),
-        discovery_date=datetime.datetime(
-            2016, 1, 1, 21, 0, 0, tzinfo=datetime.timezone.utc
-        ),
-        authority=sample_metadata_authority_registry,
-        fetcher=sample_metadata_fetcher,
-        format="json",
-        metadata=b'{"history": "updated"}',
-    )
-    emd_ori3 = RawExtrinsicMetadata(
-        target=graph_dataset.INITIAL_ORIGIN.swhid(),
-        discovery_date=datetime.datetime(
-            2016, 1, 1, 21, 0, 0, tzinfo=datetime.timezone.utc
-        ),
-        authority=sample_metadata_authority_deposit,
-        fetcher=sample_metadata_fetcher,
-        format="json",
-        metadata=b'{"some": "thing"}',
-    )
-    emd_snp = RawExtrinsicMetadata(
-        target=ExtendedSWHID(object_type=ExtendedObjectType.SNAPSHOT, object_id=h(20)),
-        discovery_date=datetime.datetime(
-            2015, 1, 1, 21, 0, 0, tzinfo=datetime.timezone.utc
-        ),
-        authority=sample_metadata_authority_registry,
-        fetcher=sample_metadata_fetcher,
-        format="json",
-        metadata=b'{"violet": "blue"}',
-    )
-    emd_rel = RawExtrinsicMetadata(
-        target=ExtendedSWHID(object_type=ExtendedObjectType.RELEASE, object_id=h(10)),
-        discovery_date=datetime.datetime(
-            2015, 1, 1, 21, 0, 0, tzinfo=datetime.timezone.utc
-        ),
-        authority=sample_metadata_authority_registry,
-        fetcher=sample_metadata_fetcher,
-        format="json",
-        metadata=b'{"roses": "red"}',
-    )
-    emd_rev = RawExtrinsicMetadata(
-        target=ExtendedSWHID(object_type=ExtendedObjectType.REVISION, object_id=h(3)),
-        discovery_date=datetime.datetime(
-            2015, 1, 1, 21, 0, 0, tzinfo=datetime.timezone.utc
-        ),
-        authority=sample_metadata_authority_registry,
-        fetcher=sample_metadata_fetcher,
-        format="json",
-        metadata=b'{"love": "you"}',
-    )
-    emd_dir = RawExtrinsicMetadata(
-        target=ExtendedSWHID(object_type=ExtendedObjectType.DIRECTORY, object_id=h(2)),
-        discovery_date=datetime.datetime(
-            2015, 1, 1, 21, 0, 0, tzinfo=datetime.timezone.utc
-        ),
-        authority=sample_metadata_authority_registry,
-        fetcher=sample_metadata_fetcher,
-        format="json",
-        metadata=b'{"cheesy": "true"}',
-    )
-    emd_cnt = RawExtrinsicMetadata(
-        target=ExtendedSWHID(object_type=ExtendedObjectType.CONTENT, object_id=h(1)),
-        discovery_date=datetime.datetime(
-            2015, 1, 1, 21, 0, 0, tzinfo=datetime.timezone.utc
-        ),
-        authority=sample_metadata_authority_registry,
-        fetcher=sample_metadata_fetcher,
-        format="json",
-        metadata=b'{"address": "gemini"}',
-        origin=graph_dataset.INITIAL_ORIGIN.url,
-        visit=1,
-        snapshot=CoreSWHID(object_type=CoreSWHIDObjectType.SNAPSHOT, object_id=h(20)),
-        release=CoreSWHID(object_type=CoreSWHIDObjectType.RELEASE, object_id=h(10)),
-        revision=CoreSWHID(object_type=CoreSWHIDObjectType.REVISION, object_id=h(3)),
-        directory=CoreSWHID(object_type=CoreSWHIDObjectType.DIRECTORY, object_id=h(2)),
-        path=b"/over/the/rainbow",
-    )
-    emd_emd = RawExtrinsicMetadata(
-        target=emd_cnt.swhid(),
-        discovery_date=datetime.datetime(
-            2015, 1, 1, 21, 0, 0, tzinfo=datetime.timezone.utc
-        ),
-        authority=sample_metadata_authority_deposit,
-        fetcher=sample_metadata_fetcher,
-        format="json",
-        metadata=b'{"meta": "meta"}',
-    )
-    emd_emd_emd = RawExtrinsicMetadata(
-        target=emd_emd.swhid(),
-        discovery_date=datetime.datetime(
-            2015, 1, 1, 21, 0, 0, tzinfo=datetime.timezone.utc
-        ),
-        authority=sample_metadata_authority_deposit,
-        fetcher=sample_metadata_fetcher,
-        format="json",
-        metadata=b'{"meta": "meta-meta"}',
-    )
-    return [
-        emd_ori1,
-        emd_ori2,
-        emd_ori3,
-        emd_snp,
-        emd_rel,
-        emd_rev,
-        emd_dir,
-        emd_cnt,
-        emd_emd,
-        emd_emd_emd,
-    ]
-
-
-@pytest.fixture
-def sample_populated_storage(
-    swh_storage,
-    snapshot_20_with_multiple_branches_pointing_to_the_same_head,
-    directory_6_with_multiple_entries_pointing_to_the_same_content,
-    sample_extids,
-    sample_metadata_authority_registry,
-    sample_metadata_authority_deposit,
-    sample_metadata_fetcher,
-    sample_raw_extrinsic_metadata_objects,
-):
-    result = swh_storage.content_add(fix_contents(graph_dataset.CONTENTS))
-    assert result.get("content:add") == 6
-    result = swh_storage.skipped_content_add(graph_dataset.SKIPPED_CONTENTS)
-    assert result == {"skipped_content:add": 1}
-    directories = list(graph_dataset.DIRECTORIES)
-    directories[1] = directory_6_with_multiple_entries_pointing_to_the_same_content
-    result = swh_storage.directory_add(directories)
-    assert result == {"directory:add": 6}
-    result = swh_storage.revision_add(graph_dataset.REVISIONS)
-    assert result == {"revision:add": 4}
-    # swh.graph.example_dataset contains a dangling release which would
-    # prevent us from removing any revisions, directories or contents in our tests.
-    # We need to skip it.
-    result = swh_storage.release_add(
-        [
-            rel
-            for rel in graph_dataset.RELEASES
-            if str(rel.swhid()) != "swh:1:rel:0000000000000000000000000000000000000019"
-        ]
-    )
-    assert result == {"release:add": 2}
-    snapshot_22 = graph_dataset.SNAPSHOTS[1]
-    result = swh_storage.snapshot_add(
-        [snapshot_20_with_multiple_branches_pointing_to_the_same_head, snapshot_22]
-    )
-    assert result == {"snapshot:add": 2}
-    result = swh_storage.origin_add(graph_dataset.ORIGINS)
-    assert result == {"origin:add": 2}
-    swh_storage.origin_visit_add(graph_dataset.ORIGIN_VISITS)
-    swh_storage.origin_visit_status_add(graph_dataset.ORIGIN_VISIT_STATUSES)
-    result = swh_storage.extid_add(sample_extids)
-    assert result == {"extid:add": 7}
-    result = swh_storage.metadata_authority_add(
-        [sample_metadata_authority_registry, sample_metadata_authority_deposit]
-    )
-    assert result == {"metadata_authority:add": 2}
-    result = swh_storage.metadata_fetcher_add([sample_metadata_fetcher])
-    assert result == {"metadata_fetcher:add": 1}
-    result = swh_storage.raw_extrinsic_metadata_add(
-        sample_raw_extrinsic_metadata_objects
-    )
-    assert result == {
-        "ori_metadata:add": 3,
-        "snp_metadata:add": 1,
-        "rev_metadata:add": 1,
-        "rel_metadata:add": 1,
-        "dir_metadata:add": 1,
-        "cnt_metadata:add": 1,
-        "emd_metadata:add": 2,
-    }
-    return swh_storage
-
-
-@pytest.fixture
-def empty_graph_client(naive_graph_client):
-    from swh.graph.http_naive_client import NaiveClient
-
-    return NaiveClient(nodes=[], edges=[])
-
-
-@pytest.fixture
-def graph_client_with_only_initial_origin(naive_graph_client):
-    from swh.graph.http_naive_client import NaiveClient
-
-    initial_origin = str(graph_dataset.INITIAL_ORIGIN.swhid())
-    return NaiveClient(
-        nodes=list(naive_graph_client.visit_nodes(initial_origin)),
-        edges=list(naive_graph_client.visit_edges(initial_origin)),
-    )
-
-
-@pytest.fixture
-def graph_client_with_both_origins(naive_graph_client):
-    from swh.graph.http_naive_client import NaiveClient
-
-    # swh.graph.example_dataset contains a dangling release which would
-    # prevent us from removing any revisions, directories or contents in our tests.
-    # We skip it by reconstructing a graph from both origins
-    initial_origin = str(graph_dataset.INITIAL_ORIGIN.swhid())
-    forked_origin = str(graph_dataset.FORKED_ORIGIN.swhid())
-    nodes = set(naive_graph_client.visit_nodes(initial_origin)) | set(
-        naive_graph_client.visit_nodes(forked_origin)
-    )
-    edges = set(naive_graph_client.visit_edges(initial_origin)) | set(
-        naive_graph_client.visit_edges(forked_origin)
-    )
-    return NaiveClient(nodes=nodes, edges=edges)
 
 
 def assert_subgraph_is_full_from_forked_origin(subgraph):
@@ -780,12 +396,6 @@ def test_inventory_candidates(request, caplog, fixture, max_iterations):
 
 
 @pytest.fixture
-def origin_with_submodule():
-    # swh:1:ori:73186715131824fa4381c6b5ca041c1c90207ef0
-    return Origin(url="https://example.com/swh/using-submodule")
-
-
-@pytest.fixture
 def sample_populated_storage_using_submodule(
     sample_populated_storage, origin_with_submodule
 ):
@@ -859,48 +469,6 @@ def sample_populated_storage_using_submodule(
     return storage
 
 
-@pytest.fixture
-def graph_client_with_submodule(naive_graph_client, origin_with_submodule):
-    from swh.graph.http_naive_client import NaiveClient
-
-    initial_origin = str(graph_dataset.INITIAL_ORIGIN.swhid())
-    forked_origin = str(graph_dataset.FORKED_ORIGIN.swhid())
-
-    extra_nodes = {
-        origin_with_submodule,
-        "swh:1:snp:0000000000000000000000000000000000000032",
-        "swh:1:rev:0000000000000000000000000000000000000031",
-        "swh:1:rev:0000000000000000000000000000000000000013",
-        "swh:1:dir:0000000000000000000000000000000000000030",
-    }
-    extra_edges = {
-        (origin_with_submodule, "swh:1:snp:0000000000000000000000000000000000000032"),
-        (
-            "swh:1:snp:0000000000000000000000000000000000000032",
-            "swh:1:rev:0000000000000000000000000000000000000031",
-        ),
-        (
-            "swh:1:rev:0000000000000000000000000000000000000031",
-            "swh:1:dir:0000000000000000000000000000000000000030",
-        ),
-        (
-            "swh:1:dir:0000000000000000000000000000000000000030",
-            "swh:1:rev:0000000000000000000000000000000000000013",
-        ),
-    }
-    nodes = (
-        set(naive_graph_client.visit_nodes(initial_origin))
-        | set(naive_graph_client.visit_nodes(forked_origin))
-        | extra_nodes
-    )
-    edges = (
-        set(naive_graph_client.visit_edges(initial_origin))
-        | set(naive_graph_client.visit_edges(forked_origin))
-        | extra_edges
-    )
-    return NaiveClient(nodes=nodes, edges=edges)
-
-
 @pytest.mark.parametrize(
     "graph_client_fixture, storage_fixture",
     [
@@ -927,44 +495,6 @@ def test_inventory_with_submodule_stops_at_directory(
         "swh:1:rev:0000000000000000000000000000000000000031",
         "swh:1:dir:0000000000000000000000000000000000000030",
     }
-
-
-#
-# Outdated graph (and successive removals of forks)
-# ================================================
-
-
-@pytest.fixture
-def storage_with_forked_origin_removed(sample_populated_storage):
-    removed_swhids = [
-        "swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165",
-        "swh:1:snp:0000000000000000000000000000000000000022",
-        "swh:1:rel:0000000000000000000000000000000000000021",
-        "swh:1:rev:0000000000000000000000000000000000000018",
-        "swh:1:rev:0000000000000000000000000000000000000013",
-        "swh:1:dir:0000000000000000000000000000000000000017",
-        "swh:1:dir:0000000000000000000000000000000000000016",
-        "swh:1:dir:0000000000000000000000000000000000000012",
-        "swh:1:cnt:0000000000000000000000000000000000000015",
-        "swh:1:cnt:0000000000000000000000000000000000000014",
-        "swh:1:cnt:0000000000000000000000000000000000000011",
-    ]
-    result = sample_populated_storage.object_delete(
-        [ExtendedSWHID.from_string(swhid) for swhid in removed_swhids]
-    )
-    assert result == {
-        "content:delete": 2,
-        "content:delete:bytes": 0,
-        "directory:delete": 3,
-        "origin:delete": 1,
-        "origin_visit:delete": 1,
-        "origin_visit_status:delete": 1,
-        "release:delete": 1,
-        "revision:delete": 2,
-        "skipped_content:delete": 1,
-        "snapshot:delete": 1,
-    }
-    return sample_populated_storage
 
 
 #

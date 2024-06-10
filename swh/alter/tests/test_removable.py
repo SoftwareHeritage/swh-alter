@@ -1,36 +1,16 @@
-# Copyright (C) 2023 The Software Heritage developers
+# Copyright (C) 2023-2024 The Software Heritage developers
 # See the AUTHORS file at the top-level directory of this distribution
 # License: GNU General Public License version 3, or any later version
 # See top-level LICENSE file for more information
 
-from collections import defaultdict
-from typing import List
-
 import pytest
 
 import swh.graph.example_dataset as graph_dataset
-from swh.graph.example_dataset import FORKED_ORIGIN, INITIAL_ORIGIN
-from swh.model.swhids import ExtendedSWHID
+from swh.graph.example_dataset import INITIAL_ORIGIN
 
 from ..inventory import InventorySubgraph
 from ..removable import mark_removable
-from .test_inventory import (  # noqa: F401
-    directory_6_with_multiple_entries_pointing_to_the_same_content,
-    snapshot_20_with_multiple_branches_pointing_to_the_same_head,
-)
-from .test_inventory import empty_graph_client  # noqa: F401
-from .test_inventory import graph_client_with_both_origins  # noqa: F401
-from .test_inventory import graph_client_with_only_initial_origin  # noqa: F401
-from .test_inventory import graph_client_with_submodule  # noqa: F401
-from .test_inventory import origin_with_submodule  # noqa: F401
-from .test_inventory import sample_extids  # noqa: F401
-from .test_inventory import sample_metadata_authority_deposit  # noqa: F401
-from .test_inventory import sample_metadata_authority_registry  # noqa: F401
-from .test_inventory import sample_metadata_fetcher  # noqa: F401
-from .test_inventory import sample_populated_storage  # noqa: F401
-from .test_inventory import sample_raw_extrinsic_metadata_objects  # noqa: F401
-from .test_inventory import storage_with_forked_origin_removed  # noqa: F401
-from .test_subgraph import write_dot_if_requested
+from .conftest import write_dot_if_requested
 
 
 @pytest.fixture
@@ -66,57 +46,6 @@ def inventory_from_initial_origin():
 
 
 @pytest.fixture
-def inventory_from_forked_origin():
-    g = InventorySubgraph()
-    v_ori = g.add_swhid(FORKED_ORIGIN.swhid())
-    v_snp = g.add_swhid("swh:1:snp:0000000000000000000000000000000000000022")
-    v_rel_21 = g.add_swhid("swh:1:rel:0000000000000000000000000000000000000021")
-    v_rel_10 = g.add_swhid("swh:1:rel:0000000000000000000000000000000000000010")
-    v_rev_18 = g.add_swhid("swh:1:rev:0000000000000000000000000000000000000018")
-    v_rev_13 = g.add_swhid("swh:1:rev:0000000000000000000000000000000000000013")
-    v_rev_09 = g.add_swhid("swh:1:rev:0000000000000000000000000000000000000009")
-    v_rev_03 = g.add_swhid("swh:1:rev:0000000000000000000000000000000000000003")
-    v_dir_17 = g.add_swhid("swh:1:dir:0000000000000000000000000000000000000017")
-    v_dir_16 = g.add_swhid("swh:1:dir:0000000000000000000000000000000000000016")
-    v_dir_12 = g.add_swhid("swh:1:dir:0000000000000000000000000000000000000012")
-    v_dir_08 = g.add_swhid("swh:1:dir:0000000000000000000000000000000000000008")
-    v_dir_06 = g.add_swhid("swh:1:dir:0000000000000000000000000000000000000006")
-    v_dir_02 = g.add_swhid("swh:1:dir:0000000000000000000000000000000000000002")
-    v_cnt_15 = g.add_swhid("swh:1:cnt:0000000000000000000000000000000000000015")
-    v_cnt_14 = g.add_swhid("swh:1:cnt:0000000000000000000000000000000000000014")
-    v_cnt_11 = g.add_swhid("swh:1:cnt:0000000000000000000000000000000000000011")
-    v_cnt_07 = g.add_swhid("swh:1:cnt:0000000000000000000000000000000000000007")
-    v_cnt_05 = g.add_swhid("swh:1:cnt:0000000000000000000000000000000000000005")
-    v_cnt_04 = g.add_swhid("swh:1:cnt:0000000000000000000000000000000000000004")
-    v_cnt_01 = g.add_swhid("swh:1:cnt:0000000000000000000000000000000000000001")
-    g.add_edge(v_ori, v_snp)
-    g.add_edge(v_snp, v_rel_21)
-    g.add_edge(v_snp, v_rel_10)
-    g.add_edge(v_snp, v_rev_09)
-    g.add_edge(v_rel_21, v_rev_18)
-    g.add_edge(v_rev_18, v_rev_13)
-    g.add_edge(v_rev_13, v_rev_09)
-    g.add_edge(v_rev_09, v_rev_03)
-    g.add_edge(v_rev_18, v_dir_17)
-    g.add_edge(v_rev_13, v_dir_12)
-    g.add_edge(v_rev_09, v_dir_08)
-    g.add_edge(v_rev_03, v_dir_02)
-    g.add_edge(v_dir_17, v_dir_16)
-    g.add_edge(v_dir_12, v_dir_08)
-    g.add_edge(v_dir_08, v_dir_06)
-    g.add_edge(v_dir_17, v_cnt_14)
-    g.add_edge(v_dir_16, v_cnt_15)
-    g.add_edge(v_dir_12, v_cnt_11)
-    g.add_edge(v_dir_08, v_cnt_07)
-    g.add_edge(v_dir_08, v_cnt_01)
-    g.add_edge(v_dir_06, v_cnt_05)
-    g.add_edge(v_dir_06, v_cnt_04)
-    g.add_edge(v_dir_02, v_cnt_01)
-    write_dot_if_requested(g, "inventory_from_forked_origin.dot")
-    return g
-
-
-@pytest.fixture
 def storage_with_record_references(swh_storage_backend_config):
     """Use a record references proxy to keep close to production settings"""
     from swh.storage import get_storage
@@ -125,9 +54,7 @@ def storage_with_record_references(swh_storage_backend_config):
 
 
 @pytest.fixture
-def storage_with_no_new_references_since_export(
-    mocker, sample_populated_storage  # noqa: F811
-):
+def storage_with_no_new_references_since_export(mocker, sample_populated_storage):
     # Recent API, see:
     # https://gitlab.softwareheritage.org/swh/devel/swh-storage/-/merge_requests/1042
     mocker.patch.object(
@@ -135,32 +62,6 @@ def storage_with_no_new_references_since_export(
         "object_find_recent_references",
         create=True,
         return_value=[],
-    )
-    return sample_populated_storage
-
-
-@pytest.fixture
-def storage_with_references_from_forked_origin(
-    mocker, sample_populated_storage, inventory_from_forked_origin  # noqa: F811
-):
-    references = defaultdict(list)
-    for e in inventory_from_forked_origin.es:
-        references[inventory_from_forked_origin.vs["swhid"][e.target]].append(
-            inventory_from_forked_origin.vs["swhid"][e.source]
-        )
-
-    def find_recent_references(
-        target: ExtendedSWHID, limit: int
-    ) -> List[ExtendedSWHID]:
-        return references[target]
-
-    # Recent API, see:
-    # https://gitlab.softwareheritage.org/swh/devel/swh-storage/-/merge_requests/1042
-    mocker.patch.object(
-        sample_populated_storage,
-        "object_find_recent_references",
-        create=True,
-        side_effect=find_recent_references,
     )
     return sample_populated_storage
 
@@ -246,8 +147,8 @@ def test_mark_removable_on_forked_origin(
 
 
 def test_mark_removable_on_initial_origin_with_forked_origin_removed_and_oudated_graph(
-    storage_with_forked_origin_removed,  # noqa: F811
-    graph_client_with_both_origins,  # noqa: F811
+    storage_with_forked_origin_removed,
+    graph_client_with_both_origins,
     inventory_from_initial_origin,
 ):
     # Test the case of an outdated graph
@@ -273,8 +174,8 @@ def test_mark_removable_on_initial_origin_with_forked_origin_removed_and_oudated
 
 
 def test_mark_removable_on_stale_object_references_table(
-    storage_with_record_references,  # noqa: F811
-    empty_graph_client,  # noqa: F811
+    storage_with_record_references,
+    empty_graph_client,
     inventory_from_initial_origin,
 ):
     storage = storage_with_record_references

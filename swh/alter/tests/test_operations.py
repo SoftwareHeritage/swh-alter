@@ -1,4 +1,4 @@
-# Copyright (C) 2023 The Software Heritage developers
+# Copyright (C) 2023-2024 The Software Heritage developers
 # See the AUTHORS file at the top-level directory of this distribution
 # License: GNU General Public License version 3, or any later version
 # See top-level LICENSE file for more information
@@ -21,31 +21,16 @@ from swh.storage.interface import StorageInterface
 
 from ..operations import Remover, RemoverError
 from ..recovery_bundle import SecretSharing
-from .test_inventory import (  # noqa
-    directory_6_with_multiple_entries_pointing_to_the_same_content,
-    snapshot_20_with_multiple_branches_pointing_to_the_same_head,
-)
-from .test_inventory import graph_client_with_only_initial_origin  # noqa: F401
-from .test_inventory import sample_extids  # noqa: F401
-from .test_inventory import sample_metadata_authority_deposit  # noqa: F401
-from .test_inventory import sample_metadata_authority_registry  # noqa: F401
-from .test_inventory import sample_metadata_fetcher  # noqa: F401
-from .test_inventory import sample_populated_storage  # noqa: F401
-from .test_inventory import sample_raw_extrinsic_metadata_objects  # noqa: F401
-from .test_recovery_bundle import (
+from .conftest import (
     OBJECT_SECRET_KEY,
     TWO_GROUPS_REQUIRED_WITH_ONE_MINIMUM_SHARE_EACH_SECRET_SHARING_YAML,
 )
-from .test_recovery_bundle import sample_recovery_bundle  # noqa: F401
-from .test_recovery_bundle import sample_recovery_bundle_path  # noqa: F401
-from .test_removable import inventory_from_forked_origin  # noqa: F401
-from .test_removable import storage_with_references_from_forked_origin  # noqa: F401
 
 
 @pytest.fixture
 def remover(
-    storage_with_references_from_forked_origin,  # noqa: F811
-    graph_client_with_only_initial_origin,  # noqa: F811
+    storage_with_references_from_forked_origin,
+    graph_client_with_only_initial_origin,
 ):
     return Remover(
         storage=storage_with_references_from_forked_origin,
@@ -188,8 +173,8 @@ def test_remover_create_recovery_bundle_fails_with_expire_in_the_past(
 
 def test_remover_remove(
     mocker,
-    storage_with_references_from_forked_origin,  # noqa: F811
-    graph_client_with_only_initial_origin,  # noqa: F811
+    storage_with_references_from_forked_origin,
+    graph_client_with_only_initial_origin,
 ):
     removal_storage_one = mocker.MagicMock()
     removal_storage_one.object_delete.return_value = {"origin:delete": 0}
@@ -228,7 +213,7 @@ def test_remover_remove(
 
 def test_remover_remove_from_objstorages(
     mocker,
-    storage_with_references_from_forked_origin,  # noqa: F811
+    storage_with_references_from_forked_origin,
 ):
     from swh.objstorage.interface import objid_from_dict
 
@@ -257,7 +242,7 @@ def test_remover_remove_from_objstorages(
 
 def test_remover_remove_from_searches(
     mocker,
-    storage_with_references_from_forked_origin,  # noqa: F811
+    storage_with_references_from_forked_origin,
 ):
     storage = storage_with_references_from_forked_origin
     search1 = mocker.Mock(spec=SearchInterface)
@@ -283,7 +268,7 @@ def test_remover_remove_from_searches(
 
 def test_remover_have_new_references_outside_removed(
     mocker,
-    storage_with_references_from_forked_origin,  # noqa:F811
+    storage_with_references_from_forked_origin,
     remover,
 ):
     storage = storage_with_references_from_forked_origin
@@ -316,7 +301,7 @@ def test_remover_have_new_references_outside_removed(
 
 def test_remover_have_new_references_inside_removed(
     mocker,
-    storage_with_references_from_forked_origin,  # noqa:F811
+    storage_with_references_from_forked_origin,
     remover,
 ):
     storage = storage_with_references_from_forked_origin
@@ -349,7 +334,7 @@ def test_remover_have_new_references_inside_removed(
 
 def test_remover_have_new_references_nothing_new(
     mocker,
-    storage_with_references_from_forked_origin,  # noqa:F811
+    storage_with_references_from_forked_origin,
     remover,
 ):
     storage = storage_with_references_from_forked_origin
@@ -372,7 +357,7 @@ def test_remover_have_new_references_nothing_new(
 
 def test_remover_have_new_references_missing_from_storage(
     mocker,
-    storage_with_references_from_forked_origin,  # noqa:F811
+    storage_with_references_from_forked_origin,
     remover,
 ):
     storage = storage_with_references_from_forked_origin
@@ -411,7 +396,7 @@ def test_remover_have_new_references_missing_from_storage(
 
 def test_remover_remove_fails_when_new_references_have_been_added(
     mocker,
-    storage_with_references_from_forked_origin,  # noqa:F811
+    storage_with_references_from_forked_origin,
     remover,
 ):
     swhids = [
@@ -426,8 +411,8 @@ def test_remover_remove_fails_when_new_references_have_been_added(
 def test_remover_restore_recovery_bundle(
     caplog,
     mocker,
-    storage_with_references_from_forked_origin,  # noqa: F811
-    graph_client_with_only_initial_origin,  # noqa: F811
+    storage_with_references_from_forked_origin,
+    graph_client_with_only_initial_origin,
     secret_sharing_conf,
     tmp_path,
 ):
@@ -470,8 +455,8 @@ def test_remover_restore_recovery_bundle(
 def test_remover_restore_recovery_bundle_logs_insert_count_mismatch(
     caplog,
     mocker,
-    storage_with_references_from_forked_origin,  # noqa: F811
-    graph_client_with_only_initial_origin,  # noqa: F811
+    storage_with_references_from_forked_origin,
+    graph_client_with_only_initial_origin,
     tmp_path,
 ):
     mock = mocker.patch("swh.alter.operations.RecoveryBundle", autospec=True)
@@ -500,7 +485,7 @@ def test_remover_register_objects_from_bundle(
     request,
     mocker,
     remover,
-    sample_recovery_bundle_path,  # noqa: F811
+    sample_recovery_bundle_path,
 ):
     obj_swhids: Set[str] = set()
     # We cannot use a Set as dict are not hashable

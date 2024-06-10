@@ -1,4 +1,4 @@
-# Copyright (C) 2023 The Software Heritage developers
+# Copyright (C) 2023-2024 The Software Heritage developers
 # See the AUTHORS file at the top-level directory of this distribution
 # License: GNU General Public License version 3, or any later version
 # See top-level LICENSE file for more information
@@ -30,25 +30,10 @@ from ..cli import (
 )
 from ..operations import Remover
 from ..recovery_bundle import AgeSecretKey, age_decrypt
-from .test_inventory import (  # noqa
-    directory_6_with_multiple_entries_pointing_to_the_same_content,
-    snapshot_20_with_multiple_branches_pointing_to_the_same_head,
-)
-from .test_inventory import graph_client_with_only_initial_origin  # noqa: F401
-from .test_inventory import origin_with_submodule  # noqa: F401
-from .test_inventory import sample_extids  # noqa: F401
-from .test_inventory import sample_metadata_authority_deposit  # noqa: F401
-from .test_inventory import sample_metadata_authority_registry  # noqa: F401
-from .test_inventory import sample_metadata_fetcher  # noqa: F401
-from .test_inventory import sample_populated_storage  # noqa: F401
-from .test_inventory import sample_raw_extrinsic_metadata_objects  # noqa: F401
-from .test_recovery_bundle import (
+from .conftest import (
     OBJECT_SECRET_KEY,
     TWO_GROUPS_REQUIRED_WITH_ONE_MINIMUM_SHARE_EACH_SECRET_SHARING_YAML,
 )
-from .test_recovery_bundle import sample_recovery_bundle_path  # noqa: F401
-from .test_removable import inventory_from_forked_origin  # noqa: F401
-from .test_removable import storage_with_references_from_forked_origin  # noqa: F401
 
 DEFAULT_CONFIG = {
     "storage": {
@@ -75,8 +60,8 @@ DEFAULT_CONFIG = {
 @pytest.fixture
 def mocked_external_resources(
     mocker,
-    graph_client_with_only_initial_origin,  # noqa: F811
-    storage_with_references_from_forked_origin,  # noqa: F811
+    graph_client_with_only_initial_origin,
+    storage_with_references_from_forked_origin,
 ):
     mocker.patch.object(storage_with_references_from_forked_origin, "content_get")
     mocker.patch(
@@ -304,7 +289,7 @@ def find_free_port():
 
 def test_cli_remove_errors_when_graph_is_down(
     mocker,
-    storage_with_references_from_forked_origin,  # noqa: F811
+    storage_with_references_from_forked_origin,
     remove_config,
 ):
     mocker.patch(
@@ -665,7 +650,7 @@ def test_cli_recovery_bundle_resume_removal_restores_bundle_when_remove_fails(
     swh_storage,
     sample_data,
     remove_config_path,
-    sample_recovery_bundle_path,  # noqa: F811
+    sample_recovery_bundle_path,
 ):
     if "version-1" not in request.keywords:
         # See comment in test_recovery_bundle.py:test_restore()
@@ -696,7 +681,7 @@ def test_cli_recovery_bundle_resume_removal_restores_bundle_when_remove_fails(
 
 
 def test_cli_recovery_bundle_extract_content_using_decryption_key_to_file(
-    sample_recovery_bundle_path,  # noqa: F811
+    sample_recovery_bundle_path,
 ):
     runner = CliRunner()
     with runner.isolated_filesystem():
@@ -717,7 +702,7 @@ def test_cli_recovery_bundle_extract_content_using_decryption_key_to_file(
 
 
 def test_cli_recovery_bundle_extract_content_using_decryption_key_to_stdout(
-    sample_recovery_bundle_path,  # noqa: F811
+    sample_recovery_bundle_path,
 ):
     runner = CliRunner()
     with runner.isolated_filesystem():
@@ -737,7 +722,7 @@ def test_cli_recovery_bundle_extract_content_using_decryption_key_to_stdout(
 
 def test_cli_recovery_bundle_extract_content_bad_swhid_argument(
     tmp_path,
-    sample_recovery_bundle_path,  # noqa: F811
+    sample_recovery_bundle_path,
 ):
     runner = CliRunner()
     result = runner.invoke(
@@ -756,7 +741,7 @@ def test_cli_recovery_bundle_extract_content_bad_swhid_argument(
 
 def test_cli_recovery_bundle_extract_content_swhid_for_directory(
     tmp_path,
-    sample_recovery_bundle_path,  # noqa: F811
+    sample_recovery_bundle_path,
 ):
     runner = CliRunner()
     result = runner.invoke(
@@ -775,7 +760,7 @@ def test_cli_recovery_bundle_extract_content_swhid_for_directory(
 
 def test_cli_recovery_bundle_extract_content_swhid_not_in_bundle(
     tmp_path,
-    sample_recovery_bundle_path,  # noqa: F811
+    sample_recovery_bundle_path,
 ):
     runner = CliRunner()
     result = runner.invoke(
@@ -797,7 +782,7 @@ def test_cli_recovery_bundle_extract_content_swhid_not_in_bundle(
 
 def test_cli_recovery_bundle_extract_content_bad_decryption_key_argument(
     tmp_path,
-    sample_recovery_bundle_path,  # noqa: F811
+    sample_recovery_bundle_path,
 ):
     runner = CliRunner()
     result = runner.invoke(
@@ -816,7 +801,7 @@ def test_cli_recovery_bundle_extract_content_bad_decryption_key_argument(
 
 def test_cli_recovery_bundle_extract_content_wrong_decryption_key(
     tmp_path,
-    sample_recovery_bundle_path,  # noqa: F811
+    sample_recovery_bundle_path,
 ):
     runner = CliRunner()
     result = runner.invoke(
@@ -869,7 +854,7 @@ def restore_config_path(tmp_path, restore_config):
 def test_cli_recovery_bundle_restore_adds_all_objects(
     request,
     capture_output,
-    sample_recovery_bundle_path,  # noqa: F811
+    sample_recovery_bundle_path,
     swh_storage,
     sample_data,
     restore_config_path,
@@ -972,7 +957,7 @@ def test_cli_recovery_bundle_restore_from_yubikeys(
 
 
 def test_cli_recovery_bundle_restore_bad_decryption_key_argument(
-    sample_recovery_bundle_path,  # noqa: F811
+    sample_recovery_bundle_path,
     swh_storage,
     restore_config,
 ):
@@ -991,7 +976,7 @@ def test_cli_recovery_bundle_restore_bad_decryption_key_argument(
 
 
 def test_cli_recovery_bundle_restore_wrong_decryption_key(
-    sample_recovery_bundle_path,  # noqa: F811
+    sample_recovery_bundle_path,
     swh_storage,
     restore_config,
 ):
@@ -1031,8 +1016,8 @@ def test_cli_recovery_bundle_restore_non_existent_bundle(
 @pytest.fixture
 def remover_for_resume_removal(
     mocker,
-    storage_with_references_from_forked_origin,  # noqa: F811
-    graph_client_with_only_initial_origin,  # noqa: F811
+    storage_with_references_from_forked_origin,
+    graph_client_with_only_initial_origin,
     mocked_external_resources,
 ):
     remover = Remover(
@@ -1048,7 +1033,7 @@ def test_cli_recovery_bundle_resume_removal(
     mocker,
     remove_config,
     remover_for_resume_removal,
-    sample_recovery_bundle_path,  # noqa: F811
+    sample_recovery_bundle_path,
 ):
     def register_objects_from_bundle(
         recovery_bundle_path: str, object_secret_key: AgeSecretKey
@@ -1079,7 +1064,7 @@ def test_cli_recovery_bundle_resume_removal(
 
 
 def test_cli_recovery_bundle_resume_removal_prompt_for_key(
-    sample_recovery_bundle_path,  # noqa: F811
+    sample_recovery_bundle_path,
     remove_config,
     remover_for_resume_removal,
 ):
@@ -1322,7 +1307,7 @@ iJlYvmOktCmK1Y3Zw66Ytz27P1m03/g+MqpZz4sRVCTkpH4p0JecFd0/q9ukIZfF
 
 def test_cli_recovery_bundle_info_show_encrypted_secrets(
     request,
-    sample_recovery_bundle_path,  # noqa: F811
+    sample_recovery_bundle_path,
 ):
     runner = CliRunner()
     result = runner.invoke(
@@ -1709,7 +1694,7 @@ def rollover_input_proceed_with_rollover():
 
 def test_cli_recovery_bundle_rollover_with_decryption_key(
     tmp_path,
-    sample_recovery_bundle_path,  # noqa: F811
+    sample_recovery_bundle_path,
     remove_config,
     rollover_input_proceed_with_rollover,
 ):
@@ -1738,7 +1723,7 @@ def test_cli_recovery_bundle_rollover_with_decryption_key(
 
 def test_cli_recovery_bundle_rollover_with_decryption_key_fails_with_wrong_key(
     tmp_path,
-    sample_recovery_bundle_path,  # noqa: F811
+    sample_recovery_bundle_path,
     remove_config,
     rollover_input_proceed_with_rollover,
 ):
@@ -1805,7 +1790,7 @@ def test_cli_recovery_bundle_rollover_with_identity_files(
 
 
 def test_cli_recovery_bundle_rollover_can_be_canceled(
-    tmp_path, sample_recovery_bundle_path, remove_config  # noqa: F811
+    tmp_path, sample_recovery_bundle_path, remove_config
 ):
     bundle_path = shutil.copy(
         sample_recovery_bundle_path, tmp_path / "rollover.swh-recovery-bundle"

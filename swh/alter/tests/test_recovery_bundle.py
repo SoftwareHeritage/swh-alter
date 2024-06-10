@@ -1,4 +1,4 @@
-# Copyright (C) 2023 The Software Heritage developers
+# Copyright (C) 2023-2024 The Software Heritage developers
 # See the AUTHORS file at the top-level directory of this distribution
 # License: GNU General Public License version 3, or any later version
 # See top-level LICENSE file for more information
@@ -16,7 +16,6 @@ from swh.model.model import Content
 from swh.model.swhids import ExtendedSWHID
 
 from ..recovery_bundle import (
-    AgeSecretKey,
     Manifest,
     RecoveryBundle,
     RecoveryBundleCreator,
@@ -28,6 +27,22 @@ from ..recovery_bundle import (
     generate_age_keypair,
     list_yubikey_identities,
     recover_object_decryption_key_from_encrypted_shares,
+)
+from .conftest import (
+    ALI_PUBLIC_KEY,
+    ALI_SECRET_KEY,
+    BOB_PUBLIC_KEY,
+    BOB_SECRET_KEY,
+    CAMILLE_PUBLIC_KEY,
+    CAMILLE_SECRET_KEY,
+    DLIQUE_PUBLIC_KEY,
+    DLIQUE_SECRET_KEY,
+    ESSUN_PUBLIC_KEY,
+    ESSUN_SECRET_KEY,
+    OBJECT_PUBLIC_KEY,
+    OBJECT_SECRET_KEY,
+    TWO_GROUPS_REQUIRED_WITH_ONE_MINIMUM_SHARE_EACH_SECRET_SHARING_YAML,
+    object_decryption_key_provider_for_sample,
 )
 
 
@@ -193,12 +208,6 @@ def test_generate_age_keypair():
     assert len(secret_key) == 74
 
 
-OBJECT_PUBLIC_KEY = "age1a4uwpku4xzlnkh78ma3urlulhhhz0xlsv6crthjvhrjysvskp9nsz77qts"
-OBJECT_SECRET_KEY = (
-    "AGE-SECRET-KEY-1EZMJLS2MMEN4D6CCR6TQ66RD4MPT32ZN8EAU44PS3EDNUAKQWE0SM92NN4"
-)
-
-
 def test_age_encrypt_decrypt_roundtrip():
     public_key = OBJECT_PUBLIC_KEY
     secret_key = OBJECT_SECRET_KEY
@@ -273,44 +282,6 @@ def test_generate_encrypted_shares(example_secret_sharing):
         s.startswith("-----BEGIN AGE ENCRYPTED FILE-----")
         for s in encrypted_shares.values()
     )
-
-
-ALI_PUBLIC_KEY = "age123hpq9m25xsmx7caqvyv8k3fxaqastc3evyq9q7myur7l9ukj4dsnp7a5v"
-ALI_SECRET_KEY = (
-    "AGE-SECRET-KEY-1VREXCYE5WNMUD0WSCF7F6CH3FGQ9P6PGD25QHY7QX8PGDN87P37QQD3L2G"
-)
-BOB_PUBLIC_KEY = "age1mrhte5tlpzpz57gg85nzcefqc5pm5usmakqpuurxux7ry2rmhdgs7r9u68"
-BOB_SECRET_KEY = (
-    "AGE-SECRET-KEY-1UPJU3AF4M0NPLSLGVDWJU38F3MDE3JJM48E8NST8V3YKU077HEVSQVPZC2"
-)
-CAMILLE_PUBLIC_KEY = "age1ahuqxgjmvfm65shmwqa7xa703vvcla528swga3zempnxslj3pczqtx6wr8"
-CAMILLE_SECRET_KEY = (
-    "AGE-SECRET-KEY-1NPLST9VXL6E9DEHCVVPUTGH60ZRJFLPZ5HDM93MJW993CGFQ49PQU90RVL"
-)
-DLIQUE_PUBLIC_KEY = "age1qwu50kncctmpky7gg5s0v4mt4fzc4wjwj6mfjzhtk3wn6pspkyksmsmhze"
-DLIQUE_SECRET_KEY = (
-    "AGE-SECRET-KEY-1NPT3PFA7N03DFQY9GN764T4TJCZSLP36YV4S98FLYN0YGX2539GSSFUT4F"
-)
-ESSUN_PUBLIC_KEY = "age1uakt638m65nt56q9qjecwp60gnv6qwqkez43re06awqzf8hqh3pqnsppaw"
-ESSUN_SECRET_KEY = (
-    "AGE-SECRET-KEY-10ZZWX7FNCUJR7HRACEGUCVA4V0PYGLQ7NJDYPRH96YNC3AJLM37QQNWX3K"
-)
-
-TWO_GROUPS_REQUIRED_WITH_ONE_MINIMUM_SHARE_EACH_SECRET_SHARING_YAML = f"""\
-secret_sharing:
-  minimum_required_groups: 2
-  groups:
-    legal:
-      minimum_required_shares: 1
-      recipient_keys:
-        "Ali": {ALI_PUBLIC_KEY}
-        "Bob": {BOB_PUBLIC_KEY}
-    sysadmins:
-      minimum_required_shares: 1
-      recipient_keys:
-        "Camille": {CAMILLE_PUBLIC_KEY}
-        "Dlique": {DLIQUE_PUBLIC_KEY}
-"""
 
 
 @pytest.fixture
@@ -772,26 +743,6 @@ def test_create_recovery_bundle_with_optional_fields(
         assert manifest.expire.isoformat(
             timespec="seconds"
         ) == expiration_date.isoformat(timespec="seconds")
-
-
-@pytest.fixture(params=["version-1", "version-2"])
-def sample_recovery_bundle_path(request):
-    return os.path.join(
-        os.path.dirname(__file__),
-        "fixtures",
-        f"sample-{request.param}.swh-recovery-bundle",
-    )
-
-
-def object_decryption_key_provider_for_sample(manifest: Manifest) -> AgeSecretKey:
-    return OBJECT_SECRET_KEY
-
-
-@pytest.fixture
-def sample_recovery_bundle(sample_recovery_bundle_path):
-    return RecoveryBundle(
-        sample_recovery_bundle_path, object_decryption_key_provider_for_sample
-    )
 
 
 def test_recovery_bundle_decryption_key_provider_is_optional(
