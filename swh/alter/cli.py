@@ -164,6 +164,9 @@ def alter_cli_group(ctx):
     ctx.obj["config"] = conf
 
     for logger in (operations_logger, recovery_bundle_logger):
+        if not logger.propagate:
+            # Avoid configuring the logger twice
+            continue
         logger.propagate = False
         logger.addHandler(ClickLoggingHandler())
 
