@@ -41,7 +41,7 @@ class ProgressBar(Protocol, Generic[V]):
     def __next__(self) -> V:
         ...
 
-    def update(self, n_steps: int) -> None:
+    def update(self, n_steps: int, current_item: Optional[V] = None) -> None:
         ...
 
 
@@ -73,7 +73,7 @@ class NoProgressBar(Generic[V]):
     def __next__(self) -> V:
         return next(iter(self))
 
-    def update(self, n_steps: int) -> None:
+    def update(self, n_steps: int, current_item: Optional[V] = None) -> None:
         pass
 
 

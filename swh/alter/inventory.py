@@ -11,7 +11,7 @@ This module implements the inventory stage of the
 from contextlib import suppress
 import itertools
 import logging
-from typing import Any, Callable, Collection, Dict, Iterator, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, Iterator, List, NamedTuple, Optional, Set, Tuple
 
 from igraph import Vertex
 
@@ -91,10 +91,12 @@ class Lister:
         storage: StorageInterface,
         graph_client: RemoteGraphClient,
         subgraph: InventorySubgraph,
+        progressbar: Optional[ProgressBar] = None,
     ):
         self._subgraph = subgraph
         self._storage = storage
         self._graph_client = graph_client
+        self._progressbar = progressbar
 
     @property
     def subgraph(self):
@@ -117,6 +119,10 @@ class Lister:
             ):
                 raise StuckInventoryException(
                     [vertex["swhid"] for vertex in self._subgraph.select_incomplete()]
+                )
+            if self._progressbar:
+                self._progressbar.update(
+                    1, current_item=ProgressBarItem(root, total, remaining)
                 )
             logger.debug(
                 "inventory_candidates: %4d SWHIDS known, %4d need to be looked up.",
@@ -373,10 +379,19 @@ _ADD_EDGES_USING_STORAGE_METHODS_PER_OBJECT_TYPE: Dict[
 }
 
 
+class ProgressBarItem(NamedTuple):
+    origin: ExtendedSWHID
+    total: int
+    remaining: int
+
+    def __str__(self) -> str:
+        return f"{self.origin} ({self.total} objects found / {self.remaining} left to look up)"
+
+
 def make_inventory(
     storage,
     graph_client,
-    swhids: Collection[ExtendedSWHID],
+    swhids: List[ExtendedSWHID],
     progressbar: Optional[ProgressBarInit] = None,
 ) -> InventorySubgraph:
     """Inventory candidates for removal from the given set of SWHID.
@@ -386,18 +401,25 @@ def make_inventory(
     The result should then used to verify which candidate can safely be
     removed.
     """
+
     subgraph = InventorySubgraph()
-    lister = Lister(storage, graph_client, subgraph)
     progressbar_init: ProgressBarInit = progressbar or no_progressbar
-    bar: ProgressBar[ExtendedSWHID]
+    bar: ProgressBar[ProgressBarItem]
     with progressbar_init(
-        swhids,
+        # Giving an infinite iterator is one of the rare ways
+        # to get click.progressbar() to display a moving cursor.
+        # In any cases, we are not going to use its value as we
+        # manually call `.update()` in `Lister.inventory_candidates()`.
+        # But we still need to make mypy happy and give the right
+        # type for the progressbar item.
+        itertools.cycle([ProgressBarItem(swhids[0], 0, 0)]),
         label="Inventorying all reachable objects…",
         show_percent=False,
-        show_pos=True,
+        show_pos=False,
         item_show_func=lambda s: str(s) if s else "",
     ) as bar:
-        for swhid in bar:
+        lister = Lister(storage, graph_client, subgraph, progressbar=bar)
+        for swhid in swhids:
             lister.inventory_candidates(swhid)
     return lister.subgraph
 
