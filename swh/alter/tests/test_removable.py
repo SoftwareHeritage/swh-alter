@@ -46,14 +46,6 @@ def inventory_from_initial_origin():
 
 
 @pytest.fixture
-def storage_with_record_references(swh_storage_backend_config):
-    """Use a record references proxy to keep close to production settings"""
-    from swh.storage import get_storage
-
-    return get_storage(cls="record_references", storage=swh_storage_backend_config)
-
-
-@pytest.fixture
 def storage_with_no_new_references_since_export(mocker, sample_populated_storage):
     # Recent API, see:
     # https://gitlab.softwareheritage.org/swh/devel/swh-storage/-/merge_requests/1042
@@ -174,23 +166,21 @@ def test_mark_removable_on_initial_origin_with_forked_origin_removed_and_oudated
 
 
 def test_mark_removable_on_stale_object_references_table(
-    storage_with_record_references,
+    swh_storage,
     empty_graph_client,
     inventory_from_initial_origin,
 ):
-    storage = storage_with_record_references
-
     # Ensure we have the right revision pointing to the right directory
     directory = graph_dataset.DIRECTORIES[0]
     revision = graph_dataset.REVISIONS[0]
     assert directory.id == revision.directory
 
-    result = storage.revision_add([revision])
-    assert result == {"revision:add": 1, "object_reference:add": 1}
-    result = storage.directory_add([directory])
-    assert result == {"directory:add": 1, "object_reference:add": 1}
+    swh_storage.revision_add([revision])
+    swh_storage.directory_add([directory])
+    result = swh_storage.flush()
+    assert result == {"revision:add": 1, "directory:add": 1, "object_reference:add": 2}
 
-    result = storage.object_delete([revision.swhid().to_extended()])
+    result = swh_storage.object_delete([revision.swhid().to_extended()])
     assert result["revision:delete"] == 1
 
     # Now the `object_references` table is outdated because it
@@ -199,7 +189,7 @@ def test_mark_removable_on_stale_object_references_table(
     inventory_subgraph = InventorySubgraph()
     inventory_subgraph.add_swhid(str(directory.swhid()))
     subgraph = mark_removable(
-        storage,
+        swh_storage,
         empty_graph_client,
         inventory_subgraph,
     )

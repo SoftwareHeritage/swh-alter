@@ -266,6 +266,8 @@ def test_add_edges_using_storage_for_revisions_pointing_multiple_times_to_the_sa
 ):
     storage = sample_populated_storage
     storage.revision_add([revision_pointing_multiple_times_to_the_same_parent])
+    result = storage.flush()
+    assert result == {"revision:add": 1, "object_reference:add": 2}
     lister = Lister(
         sample_populated_storage, graph_client_with_both_origins, InventorySubgraph()
     )
@@ -466,6 +468,13 @@ def sample_populated_storage_using_submodule(
     storage.origin_add([origin_with_submodule])
     storage.origin_visit_add([visit])
     storage.origin_visit_status_add([visit_status])
+    result = storage.flush()
+    assert result == {
+        "directory:add": 1,
+        "object_reference:add": 3,
+        "revision:add": 1,
+        "snapshot:add": 1,
+    }
     return storage
 
 

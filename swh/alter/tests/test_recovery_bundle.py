@@ -98,12 +98,6 @@ def manifest_dict():
     }
 
 
-@pytest.fixture
-def swh_storage_backend_config(swh_storage_backend_config):
-    """Use a buffered storage to keep close to production settings"""
-    return {"cls": "buffer", "storage": swh_storage_backend_config}
-
-
 def test_manifest_load_success(manifest_dict):
     assert Manifest.load(yaml.dump(manifest_dict))
 
@@ -903,6 +897,8 @@ def test_restore(sample_recovery_bundle, swh_storage, sample_data):
         swh_storage.metadata_authority_add(sample_data.authorities)
         swh_storage.metadata_fetcher_add(sample_data.fetchers)
     result = sample_recovery_bundle.restore(swh_storage)
+    # Remove the “object_reference:add” entry if it exists as we don’t care
+    _ = result.pop("object_reference:add", None)
     assert result == expected_result
     [
         origin,

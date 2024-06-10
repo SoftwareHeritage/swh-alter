@@ -407,6 +407,17 @@ def graph_client_with_submodule(naive_graph_client, origin_with_submodule):
 
 
 @pytest.fixture
+def swh_storage_backend_config(swh_storage_backend_config):
+    """Use a buffered storage that will populate the `object_references` table
+    to keep close to production settings"""
+
+    return {
+        "cls": "buffer",
+        "storage": {"cls": "record_references", "storage": swh_storage_backend_config},
+    }
+
+
+@pytest.fixture
 def sample_populated_storage(
     swh_storage,
     snapshot_20_with_multiple_branches_pointing_to_the_same_head,
@@ -417,55 +428,53 @@ def sample_populated_storage(
     sample_metadata_fetcher,
     sample_raw_extrinsic_metadata_objects,
 ):
-    result = swh_storage.content_add(fix_contents(graph_dataset.CONTENTS))
-    assert result.get("content:add") == 6
-    result = swh_storage.skipped_content_add(graph_dataset.SKIPPED_CONTENTS)
-    assert result == {"skipped_content:add": 1}
+    swh_storage.content_add(fix_contents(graph_dataset.CONTENTS))
+    swh_storage.skipped_content_add(graph_dataset.SKIPPED_CONTENTS)
     directories = list(graph_dataset.DIRECTORIES)
     directories[1] = directory_6_with_multiple_entries_pointing_to_the_same_content
-    result = swh_storage.directory_add(directories)
-    assert result == {"directory:add": 6}
-    result = swh_storage.revision_add(graph_dataset.REVISIONS)
-    assert result == {"revision:add": 4}
+    swh_storage.directory_add(directories)
+    swh_storage.revision_add(graph_dataset.REVISIONS)
     # swh.graph.example_dataset contains a dangling release which would
     # prevent us from removing any revisions, directories or contents in our tests.
     # We need to skip it.
-    result = swh_storage.release_add(
+    swh_storage.release_add(
         [
             rel
             for rel in graph_dataset.RELEASES
             if str(rel.swhid()) != "swh:1:rel:0000000000000000000000000000000000000019"
         ]
     )
-    assert result == {"release:add": 2}
     snapshot_22 = graph_dataset.SNAPSHOTS[1]
-    result = swh_storage.snapshot_add(
+    swh_storage.snapshot_add(
         [snapshot_20_with_multiple_branches_pointing_to_the_same_head, snapshot_22]
     )
-    assert result == {"snapshot:add": 2}
-    result = swh_storage.origin_add(graph_dataset.ORIGINS)
-    assert result == {"origin:add": 2}
+    swh_storage.origin_add(graph_dataset.ORIGINS)
     swh_storage.origin_visit_add(graph_dataset.ORIGIN_VISITS)
     swh_storage.origin_visit_status_add(graph_dataset.ORIGIN_VISIT_STATUSES)
-    result = swh_storage.extid_add(sample_extids)
-    assert result == {"extid:add": 7}
-    result = swh_storage.metadata_authority_add(
+    swh_storage.extid_add(sample_extids)
+    swh_storage.metadata_authority_add(
         [sample_metadata_authority_registry, sample_metadata_authority_deposit]
     )
-    assert result == {"metadata_authority:add": 2}
-    result = swh_storage.metadata_fetcher_add([sample_metadata_fetcher])
-    assert result == {"metadata_fetcher:add": 1}
-    result = swh_storage.raw_extrinsic_metadata_add(
-        sample_raw_extrinsic_metadata_objects
-    )
+    swh_storage.metadata_fetcher_add([sample_metadata_fetcher])
+    swh_storage.raw_extrinsic_metadata_add(sample_raw_extrinsic_metadata_objects)
+    result = swh_storage.flush()
     assert result == {
-        "ori_metadata:add": 3,
-        "snp_metadata:add": 1,
-        "rev_metadata:add": 1,
-        "rel_metadata:add": 1,
-        "dir_metadata:add": 1,
+        "content:add": 6,
+        "content:add:bytes": 0,
+        "directory:add": 6,
+        "extid:add": 7,
+        "release:add": 2,
+        "revision:add": 4,
+        "skipped_content:add": 1,
+        "snapshot:add": 2,
         "cnt_metadata:add": 1,
+        "dir_metadata:add": 1,
         "emd_metadata:add": 2,
+        "ori_metadata:add": 3,
+        "rel_metadata:add": 1,
+        "rev_metadata:add": 1,
+        "snp_metadata:add": 1,
+        "object_reference:add": 25,
     }
     return swh_storage
 

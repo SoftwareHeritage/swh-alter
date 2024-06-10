@@ -247,6 +247,8 @@ class Remover:
         result = bundle.restore(self.restoration_storage, self.progressbar)
         # We care about the number of objects, not the byte count
         result.pop("content:add:bytes", None)
+        # We don’t care about new object_references either
+        result.pop("object_reference:add", None)
         total = sum(result.values())
         _secho(f"{total} objects restored.", fg="green")
         count_from_journal_objects = sum(
