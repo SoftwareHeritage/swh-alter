@@ -29,11 +29,11 @@ from .conftest import (
 
 @pytest.fixture
 def remover(
-    storage_with_references_from_forked_origin,
+    sample_populated_storage,
     graph_client_with_only_initial_origin,
 ):
     return Remover(
-        storage=storage_with_references_from_forked_origin,
+        storage=sample_populated_storage,
         graph_client=graph_client_with_only_initial_origin,
     )
 
@@ -173,7 +173,7 @@ def test_remover_create_recovery_bundle_fails_with_expire_in_the_past(
 
 def test_remover_remove(
     mocker,
-    storage_with_references_from_forked_origin,
+    sample_populated_storage,
     graph_client_with_only_initial_origin,
 ):
     removal_storage_one = mocker.MagicMock()
@@ -183,7 +183,7 @@ def test_remover_remove(
     removal_storage_two.object_delete.return_value = {"origin:delete": 0}
     removal_storage_two.extid_delete_for_target.return_value = {"extid:delete": 0}
     remover = Remover(
-        storage_with_references_from_forked_origin,
+        sample_populated_storage,
         graph_client_with_only_initial_origin,
         removal_storages={"one": removal_storage_one, "two": removal_storage_two},
     )
@@ -213,11 +213,11 @@ def test_remover_remove(
 
 def test_remover_remove_from_objstorages(
     mocker,
-    storage_with_references_from_forked_origin,
+    sample_populated_storage,
 ):
     from swh.objstorage.interface import objid_from_dict
 
-    storage = storage_with_references_from_forked_origin
+    storage = sample_populated_storage
     objstorage1 = mocker.Mock(spec=ObjStorageInterface)
     objstorage2 = mocker.Mock(spec=ObjStorageInterface)
     graph_client = mocker.MagicMock()
@@ -242,9 +242,9 @@ def test_remover_remove_from_objstorages(
 
 def test_remover_remove_from_searches(
     mocker,
-    storage_with_references_from_forked_origin,
+    sample_populated_storage,
 ):
-    storage = storage_with_references_from_forked_origin
+    storage = sample_populated_storage
     search1 = mocker.Mock(spec=SearchInterface)
     search2 = mocker.Mock(spec=SearchInterface)
     graph_client = mocker.MagicMock()
@@ -268,10 +268,10 @@ def test_remover_remove_from_searches(
 
 def test_remover_have_new_references_outside_removed(
     mocker,
-    storage_with_references_from_forked_origin,
+    sample_populated_storage,
     remover,
 ):
-    storage = storage_with_references_from_forked_origin
+    storage = sample_populated_storage
     swhids = [
         "swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165",
         "swh:1:snp:0000000000000000000000000000000000000022",
@@ -301,10 +301,10 @@ def test_remover_have_new_references_outside_removed(
 
 def test_remover_have_new_references_inside_removed(
     mocker,
-    storage_with_references_from_forked_origin,
+    sample_populated_storage,
     remover,
 ):
-    storage = storage_with_references_from_forked_origin
+    storage = sample_populated_storage
     swhids = [
         "swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165",
         "swh:1:snp:0000000000000000000000000000000000000022",
@@ -334,10 +334,10 @@ def test_remover_have_new_references_inside_removed(
 
 def test_remover_have_new_references_nothing_new(
     mocker,
-    storage_with_references_from_forked_origin,
+    sample_populated_storage,
     remover,
 ):
-    storage = storage_with_references_from_forked_origin
+    storage = sample_populated_storage
     swhids = [
         "swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165",
         "swh:1:snp:0000000000000000000000000000000000000022",
@@ -357,10 +357,10 @@ def test_remover_have_new_references_nothing_new(
 
 def test_remover_have_new_references_missing_from_storage(
     mocker,
-    storage_with_references_from_forked_origin,
+    sample_populated_storage,
     remover,
 ):
-    storage = storage_with_references_from_forked_origin
+    storage = sample_populated_storage
     swhids = [
         "swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165",
         "swh:1:snp:0000000000000000000000000000000000000022",
@@ -396,7 +396,7 @@ def test_remover_have_new_references_missing_from_storage(
 
 def test_remover_remove_fails_when_new_references_have_been_added(
     mocker,
-    storage_with_references_from_forked_origin,
+    sample_populated_storage,
     remover,
 ):
     swhids = [
@@ -411,7 +411,7 @@ def test_remover_remove_fails_when_new_references_have_been_added(
 def test_remover_restore_recovery_bundle(
     caplog,
     mocker,
-    storage_with_references_from_forked_origin,
+    sample_populated_storage,
     graph_client_with_only_initial_origin,
     secret_sharing_conf,
     tmp_path,
@@ -429,7 +429,7 @@ def test_remover_restore_recovery_bundle(
     restoration_storage = mocker.Mock(spec=StorageInterface)
 
     remover = Remover(
-        storage=storage_with_references_from_forked_origin,
+        storage=sample_populated_storage,
         graph_client=graph_client_with_only_initial_origin,
         restoration_storage=restoration_storage,
     )
@@ -455,7 +455,7 @@ def test_remover_restore_recovery_bundle(
 def test_remover_restore_recovery_bundle_logs_insert_count_mismatch(
     caplog,
     mocker,
-    storage_with_references_from_forked_origin,
+    sample_populated_storage,
     graph_client_with_only_initial_origin,
     tmp_path,
 ):
@@ -465,7 +465,7 @@ def test_remover_restore_recovery_bundle_logs_insert_count_mismatch(
     restoration_storage = mocker.Mock(spec=StorageInterface)
 
     remover = Remover(
-        storage=storage_with_references_from_forked_origin,
+        storage=sample_populated_storage,
         graph_client=graph_client_with_only_initial_origin,
         restoration_storage=restoration_storage,
     )

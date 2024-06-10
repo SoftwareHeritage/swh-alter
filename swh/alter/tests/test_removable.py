@@ -47,8 +47,7 @@ def inventory_from_initial_origin():
 
 @pytest.fixture
 def storage_with_no_new_references_since_export(mocker, sample_populated_storage):
-    # Recent API, see:
-    # https://gitlab.softwareheritage.org/swh/devel/swh-storage/-/merge_requests/1042
+    # Simulate an empty `object_references` table
     mocker.patch.object(
         sample_populated_storage,
         "object_find_recent_references",
@@ -67,11 +66,11 @@ def storage_with_no_new_references_since_export(mocker, sample_populated_storage
         ),
         (
             "graph_client_with_only_initial_origin",
-            "storage_with_references_from_forked_origin",
+            "sample_populated_storage",
         ),
         (
             "graph_client_with_both_origins",
-            "storage_with_references_from_forked_origin",
+            "sample_populated_storage",
         ),
     ],
 )
@@ -99,11 +98,11 @@ def test_mark_removable_on_initial_origin(
         ),
         (
             "graph_client_with_only_initial_origin",
-            "storage_with_references_from_forked_origin",
+            "sample_populated_storage",
         ),
         (
             "graph_client_with_both_origins",
-            "storage_with_references_from_forked_origin",
+            "sample_populated_storage",
         ),
         (
             "graph_client_with_submodule",

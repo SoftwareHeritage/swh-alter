@@ -3,10 +3,9 @@
 # License: GNU General Public License version 3, or any later version
 # See top-level LICENSE file for more information
 
-from collections import defaultdict
 import datetime
 import os
-from typing import Iterator, List
+from typing import Iterator
 
 import pytest
 
@@ -509,32 +508,6 @@ def storage_with_forked_origin_removed(sample_populated_storage):
         "skipped_content:delete": 1,
         "snapshot:delete": 1,
     }
-    return sample_populated_storage
-
-
-@pytest.fixture
-def storage_with_references_from_forked_origin(
-    mocker, sample_populated_storage, inventory_from_forked_origin  # noqa: F811
-):
-    references = defaultdict(list)
-    for e in inventory_from_forked_origin.es:
-        references[inventory_from_forked_origin.vs["swhid"][e.target]].append(
-            inventory_from_forked_origin.vs["swhid"][e.source]
-        )
-
-    def find_recent_references(
-        target: ExtendedSWHID, limit: int
-    ) -> List[ExtendedSWHID]:
-        return references[target]
-
-    # Recent API, see:
-    # https://gitlab.softwareheritage.org/swh/devel/swh-storage/-/merge_requests/1042
-    mocker.patch.object(
-        sample_populated_storage,
-        "object_find_recent_references",
-        create=True,
-        side_effect=find_recent_references,
-    )
     return sample_populated_storage
 
 

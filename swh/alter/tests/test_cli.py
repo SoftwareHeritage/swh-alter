@@ -61,12 +61,12 @@ DEFAULT_CONFIG = {
 def mocked_external_resources(
     mocker,
     graph_client_with_only_initial_origin,
-    storage_with_references_from_forked_origin,
+    sample_populated_storage,
 ):
-    mocker.patch.object(storage_with_references_from_forked_origin, "content_get")
+    mocker.patch.object(sample_populated_storage, "content_get")
     mocker.patch(
         "swh.storage.get_storage",
-        return_value=storage_with_references_from_forked_origin,
+        return_value=sample_populated_storage,
     )
     mocker.patch(
         "swh.graph.http_client.RemoteGraphClient",
@@ -289,12 +289,12 @@ def find_free_port():
 
 def test_cli_remove_errors_when_graph_is_down(
     mocker,
-    storage_with_references_from_forked_origin,
+    sample_populated_storage,
     remove_config,
 ):
     mocker.patch(
         "swh.storage.get_storage",
-        return_value=storage_with_references_from_forked_origin,
+        return_value=sample_populated_storage,
     )
     erroneous_graph_port = find_free_port()
     remove_config["graph"]["url"] = f"http://localhost:{erroneous_graph_port}/graph"
@@ -1016,12 +1016,12 @@ def test_cli_recovery_bundle_restore_non_existent_bundle(
 @pytest.fixture
 def remover_for_resume_removal(
     mocker,
-    storage_with_references_from_forked_origin,
+    sample_populated_storage,
     graph_client_with_only_initial_origin,
     mocked_external_resources,
 ):
     remover = Remover(
-        storage=storage_with_references_from_forked_origin,
+        storage=sample_populated_storage,
         graph_client=graph_client_with_only_initial_origin,
     )
     mocker.patch.object(remover, "remove", return_value=None)
