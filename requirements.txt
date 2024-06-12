@@ -1,5 +1,6 @@
 attrs
 click
+humanize
 igraph
 pyyaml
 shamir-mnemonic

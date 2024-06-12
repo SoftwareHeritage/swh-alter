@@ -315,6 +315,46 @@ def test_remover_remove_from_objstorages_object_missing_from_all_objstorages(
     assert expected == caplog.records[-1].message
 
 
+def test_remover_remove_from_objstorage_display_timings(
+    caplog,
+    mocker,
+    sample_populated_storage,
+):
+    from swh.objstorage.interface import objid_from_dict
+
+    storage = sample_populated_storage
+    objstorage = mocker.Mock(spec=ObjStorageInterface)
+    graph_client = mocker.MagicMock()
+    remover = Remover(
+        storage,
+        graph_client,
+        removal_objstorages={"objstorage": objstorage},
+    )
+    remover.swhids_to_remove = [
+        ExtendedSWHID.from_string("swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165"),
+    ]
+    contents = storage.content_get(
+        [
+            bytes.fromhex("0000000000000000000000000000000000000007"),
+            bytes.fromhex("0000000000000000000000000000000000000011"),
+            bytes.fromhex("0000000000000000000000000000000000000014"),
+        ],
+        algo="sha1_git",
+    )
+    mocker.patch("time.monotonic", side_effect=[0.001, 0.2, 0.3, 0.4, 0.5, 0.72])
+    remover.objids_to_remove = [
+        objid_from_dict(content.to_dict()) for content in contents
+    ]
+    with caplog.at_level(logging.INFO):
+        remover.remove()
+    assert caplog.messages[-2] == (
+        "3 objects removed from objstorage “objstorage”. "
+        "Total time: 519 milliseconds, "
+        "average: 173 milliseconds per object, "
+        "standard deviation: 64.09 milliseconds"
+    )
+
+
 def test_remover_remove_from_searches(
     mocker,
     sample_populated_storage,

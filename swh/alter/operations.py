@@ -4,13 +4,16 @@
 # See top-level LICENSE file for more information
 
 import collections
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import partial, reduce
 import itertools
 import logging
 import operator
+import statistics
+import time
 from typing import Dict, FrozenSet, List, Optional, Set, TextIO, Tuple, cast
 
+import humanize
 from tabulate import tabulate
 
 from swh.core.utils import grouper
@@ -50,6 +53,12 @@ class RemoverError(Exception):
 def _secho(msg, **kwargs):
     """Log at info level, passing kwargs as styles for click.secho()"""
     logger.info(msg, extra={"style": kwargs})
+
+
+def format_duration(seconds: float) -> str:
+    return humanize.precisedelta(
+        timedelta(seconds=seconds), minimum_unit="milliseconds"
+    )
 
 
 STORAGE_OBJECT_DELETE_CHUNK_SIZE = 200
@@ -361,12 +370,15 @@ class Remover:
     ) -> Set[FrozenSet[Tuple[str, str]]]:
         count = 0
         not_found: Set[FrozenSet[Tuple[str, str]]] = set()
+        durations = []
         with self.progressbar(
             self.objids_to_remove, label=f"Removing objects from objstorage “{name}”…"
         ) as bar:
             for objid in bar:
                 try:
+                    start = time.monotonic()
                     objstorage.delete(objid)
+                    durations.append(time.monotonic() - start)
                     count += 1
                 except ObjNotFoundError:
                     # hex form is nicer to read
@@ -378,7 +390,23 @@ class Remover:
                         objid_hex,
                         name,
                     )
-        _secho(f"{count} objects removed from objstorage “{name}”.", fg="green")
+        stats = (
+            (
+                f" Total time: {format_duration(sum(durations))},"
+                f" average: {format_duration(statistics.mean(durations))} per object,"
+            )
+            if len(durations) > 0
+            else ""
+        )
+        stdev = (
+            f" standard deviation: {format_duration(statistics.stdev(durations))}"
+            if len(durations) >= 2
+            else ""
+        )
+        _secho(
+            f"{count} objects removed from objstorage “{name}”.{stats}{stdev}",
+            fg="green",
+        )
         return not_found
 
     def have_new_references(self, removed_swhids: List[ExtendedSWHID]) -> bool:
