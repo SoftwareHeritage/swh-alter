@@ -272,7 +272,10 @@ class Remover:
         for name, removal_objstorage in self.removal_objstorages.items():
             self.remove_from_objstorage(name, removal_objstorage)
         if self.have_new_references(self.swhids_to_remove):
-            raise RemoverError("New references have been added to removed objects")
+            raise RemoverError(
+                "New references have been added to removed objects. "
+                "This invalidates the initial set of candidates for removal."
+            )
 
     def remove_from_storage(
         self, name: str, removal_storage: ObjectDeletionInterface

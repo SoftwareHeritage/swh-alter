@@ -405,6 +405,7 @@ def remove(
         remover.remove()
     except Exception as e:
         click.secho(str(e), err=True, fg="red", bold=True)
+        click.secho("Rolling back…", fg="cyan")
         remover.restore_recovery_bundle()
         ctx.exit(1)
 
