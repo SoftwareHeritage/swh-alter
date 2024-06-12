@@ -459,7 +459,7 @@ class Marker:
                 vertex["swhid"].object_type == ObjectType.REVISION
                 and pred.object_type == ObjectType.DIRECTORY
             ):
-                logger.info(
+                logger.debug(
                     "Skipping predecessor %s of %s as it's a submodule",
                     pred,
                     vertex["swhid"],

@@ -273,7 +273,7 @@ class Lister:
             # references) are not considered as candidates for removal when
             # inventorying a directory.
             if target.object_type == ObjectType.REVISION:
-                logger.info(
+                logger.debug(
                     "Ignored submodule %s (%s), listed in directory %s",
                     entry.name,
                     entry.swhid(),
