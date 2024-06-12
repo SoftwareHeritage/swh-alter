@@ -36,6 +36,11 @@ def remover(
     return Remover(
         storage=sample_populated_storage,
         graph_client=graph_client_with_only_initial_origin,
+        known_missing=[
+            ExtendedSWHID.from_string(
+                "swh:1:cnt:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            )
+        ],
     )
 
 
@@ -60,6 +65,40 @@ def test_remover_get_removable_populates_referencing(remover):
             "swh:1:rel:0000000000000000000000000000000000000010",
             "swh:1:rev:0000000000000000000000000000000000000009",
             "swh:1:dir:0000000000000000000000000000000000000008",
+        )
+    }
+
+
+def test_remover_get_removable_with_known_missing(
+    sample_populated_storage,
+    graph_client_with_both_origins,
+):
+    swhids = [
+        ExtendedSWHID.from_string("swh:1:ori:83404f995118bd25774f4ac14422a8f175e7a054"),
+        ExtendedSWHID.from_string("swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165"),
+    ]
+    remover = Remover(
+        storage=sample_populated_storage,
+        graph_client=graph_client_with_both_origins,
+        known_missing=swhids[1:],
+    )
+    removable = remover.get_removable(swhids)
+    assert removable.removable_swhids == [
+        ExtendedSWHID.from_string(s)
+        for s in (
+            "swh:1:ori:83404f995118bd25774f4ac14422a8f175e7a054",
+            "swh:1:snp:0000000000000000000000000000000000000020",
+            "swh:1:emd:ba1e287385aac8d76caaf9956819a5d68bfe2083",
+            "swh:1:emd:bfe476f7cffb00a5be2b12cfb364e207e4be0da2",
+            "swh:1:emd:1ecd328c7597043895621da4d5351c59f1de663c",
+            "swh:1:emd:bcfe01c5e96a675b500d32b15b4ea36bd5a46cdb",
+        )
+    ]
+    assert set(removable.referencing) == {
+        ExtendedSWHID.from_string(s)
+        for s in (
+            "swh:1:rev:0000000000000000000000000000000000000009",
+            "swh:1:rel:0000000000000000000000000000000000000010",
         )
     }
 

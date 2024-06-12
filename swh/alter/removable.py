@@ -522,6 +522,11 @@ class Marker:
             search_limit,
         )
 
+    def mark_known_missing(self, known_missing: Set[ExtendedSWHID]):
+        for swhid in known_missing:
+            for v in self._subgraph.vs.select(swhid_eq=swhid):
+                v["state"] = MarkingState.UNREMOVABLE
+
     def mark_candidates(self):
         for index, vid in enumerate(self._subgraph.topological_sorting()):
             vertex = self._subgraph.vs[vid]
@@ -553,6 +558,7 @@ def mark_removable(
     storage: StorageInterface,
     graph_client: RemoteGraphClient,
     inventory_subgraph: InventorySubgraph,
+    known_missing: Optional[Set[ExtendedSWHID]] = None,
     progressbar: Optional[ProgressBarInit] = None,
 ) -> RemovableSubgraph:
     """Find which candidates can be safely removed from the archive.
@@ -570,4 +576,6 @@ def mark_removable(
     ) as bar:
         marker = Marker(storage, graph_client, subgraph, bar)
         marker.mark_candidates()
+        if known_missing:
+            marker.mark_known_missing(known_missing)
     return marker.subgraph

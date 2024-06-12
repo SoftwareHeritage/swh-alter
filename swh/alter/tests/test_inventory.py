@@ -424,6 +424,28 @@ def test_inventory_candidates_stuck(
     )
 
 
+def test_inventory_candidates_known_missing(
+    sample_populated_storage, graph_client_with_both_origins
+):
+    subgraph = InventorySubgraph()
+    # Add an incomplete node which does not exist neither in storage nor in graph
+    inexistent_swhid = ExtendedSWHID.from_string(
+        "swh:1:rev:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    )
+    subgraph.add_swhid(inexistent_swhid, complete=False)
+    lister = Lister(
+        sample_populated_storage,
+        graph_client_with_both_origins,
+        subgraph,
+        known_missing={inexistent_swhid},
+    )
+    lister.inventory_candidates(graph_dataset.FORKED_ORIGIN.swhid())
+    assert len(lister.subgraph.vs.select(complete_eq=True)) == 21
+    incomplete = lister.subgraph.select_incomplete()
+    assert len(incomplete) == 1
+    assert incomplete[0]["swhid"] == inexistent_swhid
+
+
 #
 # Submodules handling
 # ===================

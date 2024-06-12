@@ -10,6 +10,7 @@ import os
 import shutil
 import socket
 import sys
+import textwrap
 
 from click.testing import CliRunner
 import pytest
@@ -470,6 +471,129 @@ def test_cli_remove_output_subgraphs(mocker, mocked_external_resources, remove_c
     assert kwargs["output_inventory_subgraph"].name == "inventory.dot"
     assert kwargs["output_removable_subgraph"].name == "removable.dot"
     assert kwargs["output_pruned_removable_subgraph"].name == "pruned.dot"
+
+
+def test_cli_remove_known_missing_option(
+    mocker,
+    mocked_external_resources,
+    remove_config,
+):
+    spy_init = mocker.spy(Remover, "__init__")
+    runner = CliRunner()
+    runner.invoke(
+        remove,
+        [
+            "--identifier",
+            "test",
+            "--recovery-bundle",
+            "/nonexistent",
+            "--dry-run=stop-before-recovery-bundle",
+            "--known-missing",
+            "swh:1:ori:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "--known-missing",
+            "swh:1:snp:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "https://example.com/swh/graph",
+        ],
+        obj={"config": remove_config},
+        catch_exceptions=False,
+    )
+    assert spy_init.call_args.kwargs.get("known_missing") == {
+        ExtendedSWHID.from_string(swhid)
+        for swhid in (
+            "swh:1:ori:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "swh:1:snp:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        )
+    }
+
+
+def test_cli_remove_known_missing_file(
+    mocker,
+    mocked_external_resources,
+    tmp_path,
+    remove_config,
+):
+    known_missing_path = tmp_path / "known-missing"
+    known_missing_path.write_text(
+        textwrap.dedent(
+            """\
+            swh:1:snp:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+            # A revision
+            swh:1:rev:cccccccccccccccccccccccccccccccccccccccc
+
+            # Comments and blank lines, yeah!
+            """.rstrip()
+        )
+    )
+    spy_init = mocker.spy(Remover, "__init__")
+    runner = CliRunner()
+    runner.invoke(
+        remove,
+        [
+            "--identifier",
+            "test",
+            "--recovery-bundle",
+            "/nonexistent",
+            "--dry-run=stop-before-recovery-bundle",
+            "--known-missing",
+            "swh:1:ori:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "--known-missing-file",
+            str(known_missing_path),
+            "https://example.com/swh/graph",
+        ],
+        obj={"config": remove_config},
+        catch_exceptions=False,
+    )
+    assert spy_init.call_args.kwargs.get("known_missing") == {
+        ExtendedSWHID.from_string(swhid)
+        for swhid in (
+            "swh:1:ori:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "swh:1:snp:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "swh:1:rev:cccccccccccccccccccccccccccccccccccccccc",
+        )
+    }
+
+
+def test_cli_remove_known_missing_stdin(
+    mocker,
+    mocked_external_resources,
+    remove_config,
+):
+    spy_init = mocker.spy(Remover, "__init__")
+    runner = CliRunner()
+    runner.invoke(
+        remove,
+        [
+            "--identifier",
+            "test",
+            "--recovery-bundle",
+            "/nonexistent",
+            "--dry-run=stop-before-recovery-bundle",
+            "--known-missing",
+            "swh:1:ori:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "--known-missing-file",
+            "-",
+            "https://example.com/swh/graph",
+        ],
+        input=textwrap.dedent(
+            """\
+            swh:1:snp:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+            # A revision
+            swh:1:rev:cccccccccccccccccccccccccccccccccccccccc
+
+            # Comments and blank lines, yeah!
+            """.rstrip()
+        ),
+        obj={"config": remove_config},
+        catch_exceptions=False,
+    )
+    assert spy_init.call_args.kwargs.get("known_missing") == {
+        ExtendedSWHID.from_string(swhid)
+        for swhid in (
+            "swh:1:ori:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "swh:1:snp:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "swh:1:rev:cccccccccccccccccccccccccccccccccccccccc",
+        )
+    }
 
 
 @pytest.fixture

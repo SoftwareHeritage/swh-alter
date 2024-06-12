@@ -7,6 +7,7 @@ import pytest
 
 import swh.graph.example_dataset as graph_dataset
 from swh.graph.example_dataset import INITIAL_ORIGIN
+from swh.model.swhids import ExtendedSWHID
 
 from ..inventory import InventorySubgraph
 from ..removable import mark_removable
@@ -195,3 +196,38 @@ def test_mark_removable_on_stale_object_references_table(
     assert {str(swhid) for swhid in subgraph.removable_swhids()} == {
         str(directory.swhid())
     }
+
+
+def test_mark_removable_with_known_missing(
+    storage_with_forked_origin_removed,
+    graph_client_with_only_initial_origin,
+    inventory_from_initial_origin,
+):
+    known_missing = {
+        ExtendedSWHID.from_string("swh:1:dir:0000000000000000000000000000000000000006"),
+    }
+    # Test the case of an outdated graph
+    subgraph = mark_removable(
+        storage_with_forked_origin_removed,
+        graph_client_with_only_initial_origin,
+        inventory_from_initial_origin,
+        known_missing=known_missing,
+    )
+    assert {str(swhid) for swhid in subgraph.removable_swhids()} == {
+        "swh:1:ori:83404f995118bd25774f4ac14422a8f175e7a054",
+        "swh:1:snp:0000000000000000000000000000000000000020",
+        "swh:1:rel:0000000000000000000000000000000000000010",
+        "swh:1:rev:0000000000000000000000000000000000000009",
+        "swh:1:rev:0000000000000000000000000000000000000003",
+        "swh:1:dir:0000000000000000000000000000000000000008",
+        "swh:1:dir:0000000000000000000000000000000000000002",
+        "swh:1:cnt:0000000000000000000000000000000000000007",
+        "swh:1:cnt:0000000000000000000000000000000000000005",
+        "swh:1:cnt:0000000000000000000000000000000000000004",
+        "swh:1:cnt:0000000000000000000000000000000000000001",
+    }
+    # Normally we would have removed everything, but objects
+    # known missing are not considered removable, therefore
+    # they won’t be in the recovery bundle, and thus are
+    # referenced by the set of removable objects.
+    assert set(subgraph.referenced_swhids()) == known_missing

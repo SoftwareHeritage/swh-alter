@@ -8,7 +8,17 @@ from __future__ import annotations
 import logging
 import pathlib
 import sys
-from typing import TYPE_CHECKING, Callable, Dict, Iterable, Optional, Set, Tuple, cast
+from typing import (
+    TYPE_CHECKING,
+    Callable,
+    Dict,
+    Iterable,
+    Optional,
+    Set,
+    TextIO,
+    Tuple,
+    cast,
+)
 
 import click
 
@@ -22,6 +32,18 @@ if TYPE_CHECKING:
     from .operations import Remover
     from .progressbar import ProgressBar, V
     from .recovery_bundle import ObjectDecryptionKeyProvider, ShareDecryptionKeys
+
+
+class SWHIDType(click.ParamType):
+    name = "swhid"
+
+    def convert(self, value, param, ctx) -> "ExtendedSWHID":
+        from swh.model.swhids import ExtendedSWHID, ValidationError
+
+        try:
+            return ExtendedSWHID.from_string(value)
+        except ValidationError:
+            raise click.ClickException(f"Unable to parse “{value}” as a SWHID.")
 
 
 class SwhidOrUrlParamType(click.ParamType):
@@ -172,6 +194,19 @@ def alter_cli_group(ctx):
     return ctx
 
 
+def read_swhids(file: TextIO) -> Set["ExtendedSWHID"]:
+    import re
+
+    from swh.model.swhids import ExtendedSWHID
+
+    filter_re = re.compile(r"^(#|$)")
+    return {
+        ExtendedSWHID.from_string(line.strip())
+        for line in file.read().split("\n")
+        if not filter_re.match(line)
+    }
+
+
 def get_remover(ctx: click.Context, dry_run: bool = False) -> "Remover":
     from swh.core.api import RemoteException
     from swh.graph.http_client import GraphAPIError, RemoteGraphClient
@@ -251,6 +286,10 @@ def get_remover(ctx: click.Context, dry_run: bool = False) -> "Remover":
         ), "journal writer is not kafka-based"
         removal_journals[name] = journal_writer
 
+    known_missing = set(ctx.params.get("known_missing_swhids", set()))
+    if known_missing_file := ctx.params.get("known_missing_file"):
+        known_missing.update(read_swhids(known_missing_file))
+
     return Remover(
         storage=storage,
         graph_client=graph_client,
@@ -259,6 +298,7 @@ def get_remover(ctx: click.Context, dry_run: bool = False) -> "Remover":
         removal_storages=cast(Dict[str, ObjectDeletionInterface], removal_storages),
         removal_objstorages=cast(Dict[str, ObjStorageInterface], removal_objstorages),
         removal_journals=cast(Dict[str, KafkaJournalWriter], removal_journals),
+        known_missing=known_missing,
         progressbar=progressbar,
     )
 
@@ -307,6 +347,24 @@ def get_remover(ctx: click.Context, dry_run: bool = False) -> "Remover":
     required=True,
     help="path to the recovery bundle that will be created",
 )
+@click.option(
+    "--known-missing",
+    "known_missing_swhids",
+    metavar="SWHID",
+    type=SWHIDType(),
+    multiple=True,
+    help="object known to be missing from storage",
+)
+@click.option(
+    "--known-missing-file",
+    "known_missing_file",
+    metavar="PATH",
+    type=click.File(),
+    help=(
+        "file (or '-') with object known to be missing from storage, "
+        "one SWHID per line"
+    ),
+)
 @click.argument(
     "requested",
     metavar="<SWHID|URL>..",
@@ -326,6 +384,8 @@ def remove(
     reason,
     expire,
     recovery_bundle,
+    known_missing_swhids,
+    known_missing_file,
 ) -> None:
     """Remove the given SWHIDs or URLs from the archive."""
 

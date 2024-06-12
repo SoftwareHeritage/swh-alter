@@ -81,6 +81,7 @@ class Remover:
         /,
         storage: StorageInterface,
         graph_client: RemoteGraphClient,
+        known_missing: Optional[Set[ExtendedSWHID]] = None,
         restoration_storage: Optional[StorageInterface] = None,
         removal_searches: Optional[Dict[str, SearchInterface]] = None,
         removal_storages: Optional[Dict[str, ObjectDeletionInterface]] = None,
@@ -90,6 +91,7 @@ class Remover:
     ):
         self.storage = storage
         self.graph_client = graph_client
+        self.known_missing = known_missing or set()
         self.restoration_storage = restoration_storage
         self.removal_searches = removal_searches if removal_searches else {}
         self.removal_storages = removal_storages if removal_storages else {}
@@ -120,13 +122,21 @@ class Remover:
             _secho(f" - {swhid}")
         _secho("Finding removable objects…", fg="cyan")
         inventory_subgraph = make_inventory(
-            self.storage, self.graph_client, swhids, self.progressbar
+            self.storage,
+            self.graph_client,
+            swhids,
+            known_missing=self.known_missing,
+            progressbar=self.progressbar,
         )
         if output_inventory_subgraph:
             inventory_subgraph.write_dot(output_inventory_subgraph)
             output_inventory_subgraph.close()
         removable_subgraph = mark_removable(
-            self.storage, self.graph_client, inventory_subgraph, self.progressbar
+            self.storage,
+            self.graph_client,
+            inventory_subgraph,
+            self.known_missing,
+            self.progressbar,
         )
         if output_removable_subgraph:
             removable_subgraph.write_dot(output_removable_subgraph)

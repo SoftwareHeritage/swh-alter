@@ -120,11 +120,14 @@ class Lister:
         storage: StorageInterface,
         graph_client: RemoteGraphClient,
         subgraph: InventorySubgraph,
+        /,
+        known_missing: Optional[Set[ExtendedSWHID]] = None,
         progressbar: Optional[ProgressBar] = None,
     ):
         self._subgraph = subgraph
         self._storage = storage
         self._graph_client = graph_client
+        self._known_missing = known_missing or set()
         self._progressbar = progressbar
 
     @property
@@ -181,8 +184,12 @@ class Lister:
         fetchers = itertools.cycle(
             [self._fetch_candidates_using_graph, self._fetch_candidates_using_storage]
         )
-        to_fetch = self._subgraph.select_incomplete()
-        while to_fetch:
+        while to_fetch := [
+            v
+            for v in self._subgraph.select_incomplete()
+            if v["swhid"] not in self._known_missing
+        ]:
+            yield len(to_fetch)
             fetch = next(fetchers)
             for vertex in to_fetch:
                 # fetcher might complete more than a given vertex, so
@@ -191,8 +198,6 @@ class Lister:
                 if vertex["complete"]:
                     continue
                 fetch(vertex)
-            to_fetch = self._subgraph.select_incomplete()
-            yield len(to_fetch)
 
     def add_edges_traversing_graph(self, start: ExtendedSWHID) -> None:
         # Mapping between SWHID string and integer vertex index
@@ -422,6 +427,7 @@ def make_inventory(
     storage,
     graph_client,
     swhids: List[ExtendedSWHID],
+    known_missing: Optional[Set[ExtendedSWHID]] = None,
     progressbar: Optional[ProgressBarInit] = None,
 ) -> InventorySubgraph:
     """Inventory candidates for removal from the given set of SWHID.
@@ -433,6 +439,7 @@ def make_inventory(
     """
 
     subgraph = InventorySubgraph()
+    known_missing = known_missing or set()
     progressbar_init: ProgressBarInit = progressbar or no_progressbar
     bar: ProgressBar[ProgressBarItem]
     with progressbar_init(
@@ -448,7 +455,13 @@ def make_inventory(
         show_pos=False,
         item_show_func=lambda s: str(s) if s else "",
     ) as bar:
-        lister = Lister(storage, graph_client, subgraph, progressbar=bar)
+        lister = Lister(
+            storage,
+            graph_client,
+            subgraph,
+            known_missing=known_missing,
+            progressbar=bar,
+        )
         for swhid in swhids:
             lister.inventory_candidates(swhid)
     return lister.subgraph
