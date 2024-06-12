@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 import logging
 import shutil
 import subprocess
+import textwrap
 from typing import Any, List, Set
 from unittest.mock import call
 
@@ -238,6 +239,80 @@ def test_remover_remove_from_objstorages(
     remover.remove()
     for objstorage in (objstorage1, objstorage2):
         objstorage.delete.assert_called_once()
+
+
+def test_remover_remove_from_objstorages_object_missing_from_one_objstorage(
+    caplog,
+    mocker,
+    sample_populated_storage,
+):
+    from swh.objstorage.exc import ObjNotFoundError
+    from swh.objstorage.interface import objid_from_dict
+
+    storage = sample_populated_storage
+    objstorage1 = mocker.Mock(spec=ObjStorageInterface)
+    objstorage2 = mocker.Mock(spec=ObjStorageInterface)
+    objstorage2.delete.side_effect = ObjNotFoundError()
+    graph_client = mocker.MagicMock()
+    remover = Remover(
+        storage,
+        graph_client,
+        removal_objstorages={"one": objstorage1, "two": objstorage2},
+    )
+    contents = storage.content_get(
+        [bytes.fromhex("0000000000000000000000000000000000000014")], algo="sha1_git"
+    )
+    remover.objids_to_remove = [
+        objid_from_dict(content.to_dict()) for content in contents
+    ]
+    with caplog.at_level(logging.INFO):
+        remover.remove_from_objstorages()
+    # We should not get an error message for a single objstorage.
+    # Rationale: more objstorages have been added as time went
+    # on. But while old objects have not been moved to newer
+    # objstorages, they are still available. The real problem
+    # is when not a single objstorage has a particular object.
+    # (See the test below.)
+    assert not any("not found" in msg for msg in caplog.messages)
+
+
+def test_remover_remove_from_objstorages_object_missing_from_all_objstorages(
+    caplog,
+    mocker,
+    sample_populated_storage,
+):
+    from swh.objstorage.exc import ObjNotFoundError
+    from swh.objstorage.interface import objid_from_dict
+
+    storage = sample_populated_storage
+    objstorage1 = mocker.Mock(spec=ObjStorageInterface)
+    objstorage1.delete.side_effect = ObjNotFoundError()
+    objstorage2 = mocker.Mock(spec=ObjStorageInterface)
+    objstorage2.delete.side_effect = ObjNotFoundError()
+    graph_client = mocker.MagicMock()
+    remover = Remover(
+        storage,
+        graph_client,
+        removal_objstorages={"one": objstorage1, "two": objstorage2},
+    )
+    contents = storage.content_get(
+        [bytes.fromhex("0000000000000000000000000000000000000014")], algo="sha1_git"
+    )
+    remover.objids_to_remove = [
+        objid_from_dict(content.to_dict()) for content in contents
+    ]
+    with caplog.at_level(logging.INFO):
+        remover.remove_from_objstorages()
+    print(caplog.text)
+    expected = textwrap.dedent(
+        """\
+        Objects not found in any objstorage:
+        | blake2s256                                                       | sha1                                     | sha1_git                                 | sha256                                                           |
+        |------------------------------------------------------------------|------------------------------------------|------------------------------------------|------------------------------------------------------------------|
+        | 0000000000000000000000000000000000000000000000000000000000000014 | 0000000000000000000000000000000000000014 | 0000000000000000000000000000000000000014 | 0000000000000000000000000000000000000000000000000000000000000014 |
+        """.rstrip()  # noqa: B950
+    )
+    assert expected == caplog.records[-1].message
 
 
 def test_remover_remove_from_searches(

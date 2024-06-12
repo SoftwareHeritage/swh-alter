@@ -5,10 +5,13 @@
 
 import collections
 from datetime import datetime
-from functools import partial
+from functools import partial, reduce
 import itertools
 import logging
-from typing import Dict, List, Optional, TextIO, Tuple, cast
+import operator
+from typing import Dict, FrozenSet, List, Optional, Set, TextIO, Tuple, cast
+
+from tabulate import tabulate
 
 from swh.core.utils import grouper
 from swh.graph.http_client import RemoteGraphClient
@@ -269,8 +272,8 @@ class Remover:
             self.remove_from_storage(name, removal_storage)
         for name, journal_writer in self.removal_journals.items():
             self.remove_from_journal(name, journal_writer)
-        for name, removal_objstorage in self.removal_objstorages.items():
-            self.remove_from_objstorage(name, removal_objstorage)
+        if len(self.removal_objstorages) > 0:
+            self.remove_from_objstorages()
         if self.have_new_references(self.swhids_to_remove):
             raise RemoverError(
                 "New references have been added to removed objects. "
@@ -334,10 +337,30 @@ class Remover:
             search.flush()
         _secho(f"{count} origins removed from search “{name}”.", fg="green")
 
+    def remove_from_objstorages(self):
+        results = []
+        for name, removal_objstorage in self.removal_objstorages.items():
+            results.append(self.remove_from_objstorage(name, removal_objstorage))
+        not_found = reduce(set.intersection, results)
+        if not_found:
+            table = tabulate(
+                (
+                    dict(sorted(frozen_objid, key=operator.itemgetter(0)))
+                    for frozen_objid in not_found
+                ),
+                headers="keys",
+                tablefmt="github",
+                disable_numparse=True,
+            )
+            _secho(f"Objects not found in any objstorage:\n{table}", fg="red")
+
     def remove_from_objstorage(
-        self, name: str, objstorage: ObjStorageInterface
-    ) -> None:
+        self,
+        name: str,
+        objstorage: ObjStorageInterface,
+    ) -> Set[FrozenSet[Tuple[str, str]]]:
         count = 0
+        not_found: Set[FrozenSet[Tuple[str, str]]] = set()
         with self.progressbar(
             self.objids_to_remove, label=f"Removing objects from objstorage “{name}”…"
         ) as bar:
@@ -346,11 +369,17 @@ class Remover:
                     objstorage.delete(objid)
                     count += 1
                 except ObjNotFoundError:
-                    _secho(
-                        f"{objid} not found in objstorage “{name}” for deletion",
-                        fg="red",
+                    # hex form is nicer to read
+                    objid_hex = {k: cast(bytes, v).hex() for k, v in objid.items()}
+                    # convert to a frozenset of tuples as dicts are not hashable
+                    not_found.add(frozenset(objid_hex.items()))
+                    logger.debug(
+                        "%s not found in objstorage “%s” for deletion",
+                        objid_hex,
+                        name,
                     )
         _secho(f"{count} objects removed from objstorage “{name}”.", fg="green")
+        return not_found
 
     def have_new_references(self, removed_swhids: List[ExtendedSWHID]) -> bool:
         """Find out if any removed objects now have a new references coming from
