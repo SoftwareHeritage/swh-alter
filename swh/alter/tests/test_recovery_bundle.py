@@ -55,17 +55,20 @@ def manifest_dict():
             2023, 6, 18, 13, 12, 42, tzinfo=datetime.timezone.utc
         ),
         "swhids": [
-            "swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165",
-            "swh:1:snp:0000000000000000000000000000000000000022",
-            "swh:1:rel:0000000000000000000000000000000000000021",
-            "swh:1:rev:0000000000000000000000000000000000000018",
-            "swh:1:rev:0000000000000000000000000000000000000013",
-            "swh:1:dir:0000000000000000000000000000000000000017",
-            "swh:1:cnt:0000000000000000000000000000000000000016",
-            "swh:1:cnt:0000000000000000000000000000000000000012",
-            "swh:1:cnt:0000000000000000000000000000000000000015",
-            "swh:1:cnt:0000000000000000000000000000000000000014",
-            "swh:1:cnt:0000000000000000000000000000000000000011",
+            ExtendedSWHID.from_string(s)
+            for s in (
+                "swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165",
+                "swh:1:snp:0000000000000000000000000000000000000022",
+                "swh:1:rel:0000000000000000000000000000000000000021",
+                "swh:1:rev:0000000000000000000000000000000000000018",
+                "swh:1:rev:0000000000000000000000000000000000000013",
+                "swh:1:dir:0000000000000000000000000000000000000017",
+                "swh:1:cnt:0000000000000000000000000000000000000016",
+                "swh:1:cnt:0000000000000000000000000000000000000012",
+                "swh:1:cnt:0000000000000000000000000000000000000015",
+                "swh:1:cnt:0000000000000000000000000000000000000014",
+                "swh:1:cnt:0000000000000000000000000000000000000011",
+            )
         ],
         "decryption_key_shares": {
             "YubiKey serial 4245067 slot 1": "-----BEGIN AGE ENCRYPTED FILE-----\n"
@@ -98,14 +101,20 @@ def manifest_dict():
     }
 
 
-def test_manifest_load_success(manifest_dict):
-    assert Manifest.load(yaml.dump(manifest_dict))
+@pytest.fixture
+def manifest_dict_dumpable(manifest_dict):
+    manifest_dict["swhids"] = [str(s) for s in manifest_dict["swhids"]]
+    return manifest_dict
 
 
-def test_manifest_load_success_with_no_optionals(manifest_dict):
-    del manifest_dict["reason"]
-    del manifest_dict["expire"]
-    assert Manifest.load(yaml.dump(manifest_dict))
+def test_manifest_load_success(manifest_dict_dumpable):
+    assert Manifest.load(yaml.dump(manifest_dict_dumpable))
+
+
+def test_manifest_load_success_with_no_optionals(manifest_dict_dumpable):
+    del manifest_dict_dumpable["reason"]
+    del manifest_dict_dumpable["expire"]
+    assert Manifest.load(yaml.dump(manifest_dict_dumpable))
 
 
 @pytest.mark.parametrize(
@@ -118,10 +127,10 @@ def test_manifest_load_success_with_no_optionals(manifest_dict):
         pytest.param({"invalid": "field"}, id="invalid_field"),
     ],
 )
-def test_manifest_load_failure(manifest_dict, invalid_manifest_dict):
-    manifest_dict.update(invalid_manifest_dict)
+def test_manifest_load_failure(manifest_dict_dumpable, invalid_manifest_dict):
+    manifest_dict_dumpable.update(invalid_manifest_dict)
     with pytest.raises((ValueError, TypeError)):
-        assert Manifest.load(yaml.dump(manifest_dict))
+        assert Manifest.load(yaml.dump(manifest_dict_dumpable))
 
 
 EXPECTED_MANIFEST_DUMP = """\
@@ -962,16 +971,16 @@ def test_rollover(
         new_bundle.releases(),
         new_bundle.snapshots(),
     ):
-        decrypted_swhids.add(str(obj.swhid()))
+        decrypted_swhids.add(obj.swhid().to_extended())
     new_origin_visits = set()
     new_origin_visit_statuses = set()
     for origin in new_bundle.origins():
-        decrypted_swhids.add(str(origin.swhid()))
+        decrypted_swhids.add(origin.swhid())
         new_origin_visits.update(new_bundle.origin_visits(origin))
         new_origin_visit_statuses.update(new_bundle.origin_visit_statuses(origin))
     if bundle.version >= 2:
         decrypted_swhids.update(
-            [str(emd.swhid()) for emd in new_bundle.raw_extrinsic_metadata()]
+            [emd.swhid() for emd in new_bundle.raw_extrinsic_metadata()]
         )
         new_bundle.extids() == bundle.extids()
     assert decrypted_swhids == set(bundle.swhids)
@@ -1006,4 +1015,4 @@ def test_rollover_fails_when_unable_to_write(
     new_bundle = RecoveryBundle(bundle_path, object_decryption_key_provider_for_sample)
     assert new_bundle.share_ids == share_ids
     assert new_bundle.object_decryption_key == OBJECT_SECRET_KEY
-    assert new_bundle.get_dict(ExtendedSWHID.from_string(swhids[0])) is not None
+    assert new_bundle.get_dict(swhids[0]) is not None

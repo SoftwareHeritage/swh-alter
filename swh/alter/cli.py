@@ -755,7 +755,7 @@ def extract_content(
     secret_key_provider = get_object_decryption_key_provider(ctx)
     bundle = RecoveryBundle(recovery_bundle, secret_key_provider)
 
-    if str(swhid) not in bundle.swhids:
+    if swhid not in bundle.swhids:
         click.secho(
             f"“{swhid}” is not in the recovery bundle", err=True, fg="red", bold=True
         )

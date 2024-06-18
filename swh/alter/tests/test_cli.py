@@ -731,7 +731,7 @@ def test_cli_recovery_bundle_extract_content_using_decryption_key_to_file(
             obj={"config": DEFAULT_CONFIG},
             catch_exceptions=False,
         )
-        assert result.exit_code == 0
+        assert result.exit_code == 0, result.output
         with open("data", "rb") as f:
             assert f.read() == b"42\n"
 

@@ -128,12 +128,14 @@ class Manifest:
     )
     removal_identifier: str = attrs.field(validator=[attrs.validators.instance_of(str)])
     created: datetime = attrs.field(validator=attrs.validators.instance_of(datetime))
-    swhids: List[str] = attrs.field(validator=attrs.validators.instance_of(list))
+    swhids: List[ExtendedSWHID] = attrs.field(
+        validator=attrs.validators.instance_of(list)
+    )
 
     @swhids.validator
     def _ensure_swhids_type(self, attribute, value):
-        if not all(isinstance(swhid, str) for swhid in value):
-            raise ValueError("“swhids” must be a list of string")
+        if not all(isinstance(swhid, ExtendedSWHID) for swhid in value):
+            raise ValueError("“swhids” must be a list of ExtendedSWHID")
 
     decryption_key_shares: Dict[str, str] = attrs.field(
         validator=[attrs.validators.instance_of(dict), attrs.validators.min_len(2)]
@@ -148,7 +150,8 @@ class Manifest:
     )
 
     def dump(self, stream: Optional[TextIO] = None) -> Optional[str]:
-        d = attrs.asdict(self)
+        # recurse=False because we don’t want ExtendedSWHID to be turned into dicts
+        d = attrs.asdict(self, recurse=False)
         for optionals in ("reason", "expire"):
             if d[optionals] is None:
                 del d[optionals]
@@ -166,6 +169,7 @@ class Manifest:
             raise ValueError("Invalid manifest: not a mapping")
         if "swhids" in d and isinstance(d["swhids"], list) and len(d["swhids"]) < 1:
             raise ValueError("Invalid manifest: list of SWHID is empty")
+        d["swhids"] = [ExtendedSWHID.from_string(s) for s in d["swhids"]]
         return Manifest(**d)
 
 
@@ -496,7 +500,7 @@ class RecoveryBundle:
         return self._manifest.created
 
     @property
-    def swhids(self) -> List[str]:
+    def swhids(self) -> List[ExtendedSWHID]:
         return self._manifest.swhids
 
     @property
@@ -1083,6 +1087,9 @@ class RecoveryBundleCreator:
         ):
             self._registration_callback(obj)
             if hasattr(obj, "swhid"):
-                self._manifest.swhids.append(str(obj.swhid()))
+                swhid = obj.swhid()
+                self._manifest.swhids.append(
+                    swhid.to_extended() if hasattr(swhid, "to_extended") else swhid
+                )
             count += 1
         return count
