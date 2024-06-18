@@ -165,7 +165,9 @@ def test_cli_remove_dry_run_stop_before_recovery_bundle(
         ExtendedSWHID.from_string("swh:1:ori:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
     ]
     mocker.patch.object(
-        Remover, "get_removable", return_value=Removable(removable_swhids)
+        Remover,
+        "get_removable",
+        return_value=Removable(removable_swhids, referencing=[]),
     )
     create_recovery_bundle_method = mocker.patch.object(
         Remover, "create_recovery_bundle"
@@ -203,7 +205,9 @@ def test_cli_remove_dry_run_stop_before_removal(
         ExtendedSWHID.from_string("swh:1:ori:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
     ]
     mocker.patch.object(
-        Remover, "get_removable", return_value=Removable(removable_swhids)
+        Remover,
+        "get_removable",
+        return_value=Removable(removable_swhids, referencing=[]),
     )
     create_recovery_bundle_method = mocker.patch.object(
         Remover, "create_recovery_bundle"
@@ -236,7 +240,9 @@ def test_cli_remove_display_decryption_key(
     tmp_path,
 ):
     mocker.patch.object(
-        Remover, "get_removable", return_value=Removable(removable_swhids=[])
+        Remover,
+        "get_removable",
+        return_value=Removable(removable_swhids=[], referencing=[]),
     )
     mocker.patch.object(
         Remover, "create_recovery_bundle", return_value="SUPER-SECRET-KEY"
@@ -361,7 +367,9 @@ def test_cli_remove_origin_conversions(
     mocker, mocked_external_resources, remove_config
 ):
     mocker.patch.object(
-        Remover, "get_removable", return_value=Removable(removable_swhids=[])
+        Remover,
+        "get_removable",
+        return_value=Removable(removable_swhids=[], referencing=[]),
     )
     runner = CliRunner()
     runner.invoke(
@@ -387,7 +395,9 @@ def test_cli_remove_origin_conversions(
 
 def test_cli_remove_output_subgraphs(mocker, mocked_external_resources, remove_config):
     mocker.patch.object(
-        Remover, "get_removable", return_value=Removable(removable_swhids=[])
+        Remover,
+        "get_removable",
+        return_value=Removable(removable_swhids=[], referencing=[]),
     )
     swhid = "swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165"
     runner = CliRunner()
@@ -436,7 +446,9 @@ def remover_for_bundle_creation(mocker):
         ExtendedSWHID.from_string("swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165")
     ]
     mocker.patch.object(
-        remover, "get_removable", return_value=Removable(removable_swhids=swhids)
+        remover,
+        "get_removable",
+        return_value=Removable(removable_swhids=swhids, referencing=[]),
     )
 
     def mock_create_recovery_bundle(*args, **kwargs):
@@ -1140,10 +1152,13 @@ EXPECTED_INFO_WITH_COMPLETE_MANIFEST = """\
 Recovery bundle “test_bundle”
 =============================
 
-Created: 2023-07-27T15:17:13+00:00
+Created: 2024-06-18T16:00:49+00:00
 Reason: We needed perform some tests.
         Even with a reason on multiple lines.
-Expire: 2023-08-27 13:12:00+00:00
+Expire: 2025-08-27 13:12:00+00:00
+Removal requested for:
+- https://github.com/user1/repo1
+- https://github.com/user2/repo1
 SWHID of the objects present in the bundle:
 - swh:1:cnt:d81cc0710eb6cf9efd5b920a8453e1e07157b6cd
 - swh:1:cnt:c932c7649c6dfa4b82327d121215116909eb3bea
@@ -1159,6 +1174,13 @@ SWHID of the objects present in the bundle:
 - swh:1:snp:db99fda25b43dc5cd90625ee4b0744751799c917
 - swh:1:ori:33abd4b4c5db79c7387673f71302750fd73e0645
 - swh:1:ori:9147ab9c9287940d4fdbe95d8780664d7ad2dfc0
+- swh:1:emd:101d70c3574c1e4b730d7ba8e83a4bdadc8691cb
+- swh:1:emd:ef3b0865c7a05f79772a3189ddfc8515ec3e1844
+- swh:1:emd:43dad4d96edf2fb4f77f0dbf72113b8fe8b5b664
+- swh:1:emd:9cafd9348f3a7729c2ef0b9b149ba421589427f0
+SWHID referenced by objects in this bundle:
+- swh:1:cnt:36fade77193cb6d2bd826161a0979d64c28ab4fa
+- swh:1:dir:8505808532953da7d2581741f01b29c04b1cb9ab
 Secret share holders:
 - Ali
 - Bob
@@ -1352,6 +1374,104 @@ iJlYvmOktCmK1Y3Zw66Ytz27P1m03/g+MqpZz4sRVCTkpH4p0JecFd0/q9ukIZfF
 """
 
 
+EXPECTED_INFO_WITH_ENCRYPTED_SECRETS_VERSION_3 = """\
+Recovery bundle “test_bundle”
+=============================
+
+Created: 2024-06-18T16:00:49+00:00
+Removal requested for:
+- https://github.com/user1/repo1
+- https://github.com/user2/repo1
+SWHID of the objects present in the bundle:
+- swh:1:cnt:d81cc0710eb6cf9efd5b920a8453e1e07157b6cd
+- swh:1:cnt:c932c7649c6dfa4b82327d121215116909eb3bea
+- swh:1:cnt:33e45d56f88993aae6a0198013efa80716fd8920
+- swh:1:dir:5256e856a0a0898966d6ba14feb4388b8b82d302
+- swh:1:dir:4b825dc642cb6eb9a060e54bf8d69288fbee4904
+- swh:1:dir:afa0105cfcaa14fdbacee344e96659170bb1bda5
+- swh:1:rev:01a7114f36fddd5ef2511b2cadda237a68adbb12
+- swh:1:rev:a646dd94c912829659b22a1e7e143d2fa5ebde1b
+- swh:1:rel:f7f222093a18ec60d781070abec4a630c850b837
+- swh:1:rel:db81a26783a3f4a9db07b4759ffc37621f159bb2
+- swh:1:snp:9b922e6d8d5b803c1582aabe5525b7b91150788e
+- swh:1:snp:db99fda25b43dc5cd90625ee4b0744751799c917
+- swh:1:ori:33abd4b4c5db79c7387673f71302750fd73e0645
+- swh:1:ori:9147ab9c9287940d4fdbe95d8780664d7ad2dfc0
+- swh:1:emd:101d70c3574c1e4b730d7ba8e83a4bdadc8691cb
+- swh:1:emd:ef3b0865c7a05f79772a3189ddfc8515ec3e1844
+- swh:1:emd:43dad4d96edf2fb4f77f0dbf72113b8fe8b5b664
+- swh:1:emd:9cafd9348f3a7729c2ef0b9b149ba421589427f0
+SWHID referenced by objects in this bundle:
+- swh:1:cnt:36fade77193cb6d2bd826161a0979d64c28ab4fa
+- swh:1:dir:8505808532953da7d2581741f01b29c04b1cb9ab
+Secret share holders:
+- Ali
+-----BEGIN AGE ENCRYPTED FILE-----
+YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSA5QnF0ZEMxYTREUFU4S3Rs
+K0NmMnJJbU9OY04vYmlURE94UXZyc2xKUVVRCmhVQVZqZ3RjdnZPWnJpTTVURTZp
+WUZDTjJZOXIzUFMraXk4WDhEeEd0WTAKLT4gKy1ncmVhc2UgYnYgQHAgWWJLZnhI
+WQpWbUFYZ2FPOUgvckFVQzVvRjBib2pDUVpSd1R5Rm15WlFaWlRqek82SU9Jd2xZ
+ZHIrRTloaEtTYUpaT1Q3R2Q5Cm1KRHA0Mk4vSENEOUpWU0hxdEdOVlU3bWJIcWVO
+M2ZFcHBMSzFVaTNtRHkvN1N0OW52WmRtUkFuMTYzQjFjV2QKYzdzCi0tLSBEaEt5
+SEdXMzJ2c0cwQ2Fic2tzdzVFZzgzWlU2a0p6bE1QWExkMmh2WExJCrR9/aZoEfNO
+g2Zg24sxyPr7EnB6xF8XkW1i9UhFbo+t0zHh/dXgL5ZvNxxICNsbTOf0ztXvzIgN
+IgJy1cFt6SRUM5iAG8yXofly6i0D+i3lRXVQW+GGu7tkGGNCF8v/60l5CCwpchmb
+Ffsffwptj3jfMYEhHJS0A6k4aqUfis4U0VQC4+Mp3cCyZMgDdZq+oxh0Ml5p0+X1
+Dd+mNP2lJsWxVVzNEupSTzhc8MuachfEUE00Pe5Rc3fmfUz+tscUZc5b9o5MFYqj
+773k6yHpuw0Lij7bt0JAKyztVJrbU8wBu3vqA5r/4LZXooxz0fAusaL0Zu+iTuaj
+GlpMqUzZ7lxvWUkpB8swN/6V12Qb+oxs0W8wvSzEuRDY
+-----END AGE ENCRYPTED FILE-----
+
+- Bob
+-----BEGIN AGE ENCRYPTED FILE-----
+YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBvbDZVYUdwdGI5OXVXME5u
+cnZuU01aekpvdjMvbkRIc0NTSUk2MmNEbmcwCnp1dVB1RmhpTDN5U05TOUE1VUF6
+dzBCTFdwWEliQzkrWTZReDZ2aCtFcjgKLT4gMVV2Km5CVC1ncmVhc2UKb1kzbUtD
+cWgzNGtxSWZscXdqREhWbm9iN09VdGJQbTFpUFRmRWZrdzh6d0JZWERBd2J5WXZK
+WFNRTUN2SHlhNwpOK1ZZQXNFWDg0d1FWQ2sKLS0tIGtuWkpYbHNsZFAycUpiTVdk
+Wk02bTBzQjUvL1o0bG1Bc0pXanhyT2dGaU0Kam0N6hjnSKVUbVGiE7H8LNKbY7fx
+HL8gMphIUZkU4RCQgiuuu32qUX5uKrl3A4mVsQg2l58DH+w6doNEPea3hTpdD/P6
+P1duG+KpTHTpDYbFO9OxiV/DKPkFiV2NAkneDVajWFLe2IH/pCBHmK/ikCwAUr9W
+KsDTqL3ASz4FrVd2qocpLvke29GbCAEOFo3K+zMgHrDDRYUsh9vqDEWhkj26/xOo
+lfb5LGPLRU/jQQNozPlLqoFiLjmH2BgclzwugS7vSkQvEAPtUyipuYjrSvEn2zDz
+UIa/LJWPUsGvGZpyMnDJ+liRM5K3Q6pi1B3t6TxZ8deKP+L/qVx3ndVC6tbVDKQT
+0HJUuw4nIvvGTYrFEUEEGqBYWwA=
+-----END AGE ENCRYPTED FILE-----
+
+- Camille
+-----BEGIN AGE ENCRYPTED FILE-----
+YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSA1UDJhTSs2cUN2VTdndnpz
+QlZQekt5eFpVT2Q5U0JtYTNCNVByclkzZ0dJCmppaSs4clBmUThhTmVJMXFIK01U
+cFlocUhmdEl0WVdBcFIxLzJGaGQ5eW8KLT4gIW1QcWQtZ3JlYXNlCkJqSGFXeHZJ
+czBtK2c2TCtWMURGUjdEZEJGaE83M1ZxbGdSNHdOMkIwQng0SGR6aVhPNUhNcHdV
+L2lFeHM1dGsKcS91T0NBaERZZk5uL1hNS2FSZGhXeTZJb0ZwZUtRCi0tLSB0Uy9w
+RjFpbmVkem1Rb1grMWpmMjBFRnRhL2g4UzRiU2xhald3UHdJc1g4CjPRNqn/M80g
+590HICudxf/j+X02aqBfby3m859KS6kqUinT5sF232V2BCfZi4DF04Hoafqn1yHr
+LsYC95/31QRpG063ZstiiycezsL9yKjmsEFXx8sPJNuolpnz5RdWJd2kMbolTFZq
+JhLpxRFxXfG//fdwVd3fCynEgNmagmc9NIFLH0J3TotSzBbcc2wIK3rqHc1aNpv8
+a4sJKDam+zkhmmqMVM+G7Xqf6gKAaSNij1XH4PGBP8YqZefST+hLksL9RG3tStlz
+PU2aFJfMvh1kVTeor838Ev+87xFYW14sAVPxXoShl4KhCbUTHpYXugvO54ppPvR+
+wwAJwWzo3L/XLFNTDcV89OJTagDRwQZv98J1JJXfudu0o0hBB++/QADvuBLBNw==
+-----END AGE ENCRYPTED FILE-----
+
+- Dlique
+-----BEGIN AGE ENCRYPTED FILE-----
+YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBvanBGUmYwK0hLVVVSWCt4
+S0xFUWNINzdWeElIVXpiNHpCUHhxZnZLS1ZJCk91RWhDWWZHVEZueVY3dzFna2pE
+WU03S1JOUzdidGhybjR1SzJ6V3p1a2MKLT4gJG8rUW9ZU2ItZ3JlYXNlCjMreDdt
+N0s3YlQ1dEFFWWh3aUVlMmdnWngxNnMrU3BpU1dIK3hESFUwcGxqCi0tLSBkdm93
+OExtaE9kQUZFM2toQWZ5bjEzU3o3UFo5bDl4d2dVSXRkT3pzUWZzCvycDu7DlLxm
+2mGgKOeiWmadKbkDeY6rF9wM1w6Gw4uqeVJ1IwGribKPYGtcTWoiUx2xv6/B9j73
+FjphmMPBLbp18w3XcTwThzx/HztpM+ht4DDF1l5umGCOSFKYgCldBNxFJ7t47k+q
+USPSfC0eGeGFIf6cqIE3BGaKwMUSpHX/Bg2mvEgenOGAHTX6tPXVXdhCZySxS+qE
+B9E7dtnQFWQ699PwWmWXmsNHxlmJy4WJS4PuQJilMVhJPfZnL35bqEaDsLldwG+l
+ggzDa57zWTLG3EGVXMNxSiTy4kZZNvXzgxyCoYtiA+WLKlv+NnPZusfziuIhpvQu
+R8qbIJGROeUWfzqfouQ1A9YlRNbduwG8NLY9zzDlMGx/lMaQe42eJChNIovxQQ==
+-----END AGE ENCRYPTED FILE-----
+
+"""
+
+
 def test_cli_recovery_bundle_info_show_encrypted_secrets(
     request,
     sample_recovery_bundle_path,
@@ -1369,14 +1489,19 @@ def test_cli_recovery_bundle_info_show_encrypted_secrets(
         assert result.output == EXPECTED_INFO_WITH_ENCRYPTED_SECRETS_VERSION_1
     elif "version-2" in request.keywords:
         assert result.output == EXPECTED_INFO_WITH_ENCRYPTED_SECRETS_VERSION_2
+    elif "version-3" in request.keywords:
+        assert result.output == EXPECTED_INFO_WITH_ENCRYPTED_SECRETS_VERSION_3
     else:
         raise ValueError("Testing an unknown recovery bundle version")
 
 
 EXPECTED_DUMP_WITH_COMPLETE_MANIFEST = """\
-version: 1
+version: 3
 removal_identifier: test_bundle
-created: 2023-07-27T15:17:13+00:00
+created: 2024-06-18T16:00:49+00:00
+requested:
+- https://github.com/user1/repo1
+- https://github.com/user2/repo1
 swhids:
 - swh:1:cnt:d81cc0710eb6cf9efd5b920a8453e1e07157b6cd
 - swh:1:cnt:c932c7649c6dfa4b82327d121215116909eb3bea
@@ -1392,6 +1517,13 @@ swhids:
 - swh:1:snp:db99fda25b43dc5cd90625ee4b0744751799c917
 - swh:1:ori:33abd4b4c5db79c7387673f71302750fd73e0645
 - swh:1:ori:9147ab9c9287940d4fdbe95d8780664d7ad2dfc0
+- swh:1:emd:101d70c3574c1e4b730d7ba8e83a4bdadc8691cb
+- swh:1:emd:ef3b0865c7a05f79772a3189ddfc8515ec3e1844
+- swh:1:emd:43dad4d96edf2fb4f77f0dbf72113b8fe8b5b664
+- swh:1:emd:9cafd9348f3a7729c2ef0b9b149ba421589427f0
+referencing:
+- swh:1:cnt:36fade77193cb6d2bd826161a0979d64c28ab4fa
+- swh:1:dir:8505808532953da7d2581741f01b29c04b1cb9ab
 decryption_key_shares:
   Camille: |
     -----BEGIN AGE ENCRYPTED FILE-----
@@ -1454,7 +1586,7 @@ decryption_key_shares:
 reason: |
   We needed perform some tests.
   Even with a reason on multiple lines.
-expire: 2023-08-27T13:12:00+00:00
+expire: 2025-08-27T13:12:00+00:00
 """
 
 

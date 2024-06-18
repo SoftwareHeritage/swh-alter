@@ -46,6 +46,22 @@ def test_remover_get_removable(remover):
     ]
     removable = remover.get_removable(swhids)
     assert len(removable.removable_swhids) == 33
+    assert len(removable.referencing) == 0
+
+
+def test_remover_get_removable_populates_referencing(remover):
+    swhids = [
+        ExtendedSWHID.from_string("swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165"),
+    ]
+    removable = remover.get_removable(swhids)
+    assert set(removable.referencing) == {
+        ExtendedSWHID.from_string(s)
+        for s in (
+            "swh:1:rel:0000000000000000000000000000000000000010",
+            "swh:1:rev:0000000000000000000000000000000000000009",
+            "swh:1:dir:0000000000000000000000000000000000000008",
+        )
+    }
 
 
 @pytest.mark.skipif(
@@ -126,6 +142,14 @@ def test_remover_create_recovery_bundle(
             "swh:1:cnt:0000000000000000000000000000000000000014",
         )
     ]
+    referencing = [
+        ExtendedSWHID.from_string(s)
+        for s in (
+            "swh:1:rel:0000000000000000000000000000000000000010",
+            "swh:1:rev:0000000000000000000000000000000000000009",
+            "swh:1:dir:0000000000000000000000000000000000000012",
+        )
+    ]
     bundle_path = tmp_path / "test.swh-recovery-bundle"
     expire = datetime.now(timezone.utc) + timedelta(days=365)
     share_ids = {
@@ -135,7 +159,8 @@ def test_remover_create_recovery_bundle(
     }
     remover.create_recovery_bundle(
         secret_sharing=SecretSharing.from_dict(secret_sharing_conf),
-        removable=Removable(removable_swhids=swhids),
+        requested=[swhids[0]],
+        removable=Removable(removable_swhids=swhids, referencing=referencing),
         recovery_bundle_path=bundle_path,
         removal_identifier="test",
         reason="doing a test",
@@ -168,7 +193,8 @@ def test_remover_create_recovery_bundle_fails_with_expire_in_the_past(
     with pytest.raises(RemoverError, match="Unable to set expiration date"):
         remover.create_recovery_bundle(
             secret_sharing=SecretSharing.from_dict(secret_sharing_conf),
-            removable=Removable(removable_swhids=swhids),
+            requested=[swhids[0]],
+            removable=Removable(removable_swhids=swhids, referencing=[]),
             recovery_bundle_path=bundle_path,
             removal_identifier="test",
             reason="doing a test",
@@ -557,7 +583,8 @@ def test_remover_restore_recovery_bundle(
     ]
     remover.create_recovery_bundle(
         secret_sharing=SecretSharing.from_dict(secret_sharing_conf),
-        removable=Removable(removable_swhids=swhids),
+        requested=[swhids[0]],
+        removable=Removable(removable_swhids=swhids, referencing=[]),
         recovery_bundle_path=bundle_path,
         removal_identifier="test",
     )

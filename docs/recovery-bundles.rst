@@ -55,7 +55,11 @@ following entries. All fields are required unless specified.
   operation. In most cases, this will be the case identifier used for the
   takedown notice.
 - ``created`` (ISO8601 timestamp):
-- ``swhids`` (sequence of strings): :ref:`SWHID <swhids>` present in the recovery bundle.
+- ``requested`` (sequence of strings): list of origin URLs or :ref:`SWHIDs <swhids>` of objects
+  whose removal was requested.
+- ``swhids`` (sequence of strings): list of :ref:`SWHIDs <swhids>` present in the recovery bundle.
+- ``referencing`` (sequence of strings): list of :ref:`SWHIDs <swhids>` being
+  referenced by any objects present in the recovery bundle.
 - ``decryption_key_shares``: (mapping): shares used to recover the object decryption
   key, stored as a mapping of an secret holder identifier to armored age encrypted data
   (see :ref:`below for details <recovery-bundle-encryption>`).
@@ -285,9 +289,12 @@ Content of ``manifest.yml``:
 
 .. code:: yaml
 
-  version: 2
+  version: 3
   removal_identifier: TDN-2023-06-18-01
   created: 2023-06-18T13:12:42Z
+  requested:
+  - https://example.com/swh/graph2
+  - swh:1:snp:0000000000000000000000000000000000000022
   swhids:
   - swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165
   - swh:1:snp:0000000000000000000000000000000000000022
@@ -295,14 +302,18 @@ Content of ``manifest.yml``:
   - swh:1:rev:0000000000000000000000000000000000000018
   - swh:1:rev:0000000000000000000000000000000000000013
   - swh:1:dir:0000000000000000000000000000000000000017
+  - swh:1:dir:0000000000000000000000000000000000000012
   - swh:1:cnt:0000000000000000000000000000000000000016
-  - swh:1:cnt:0000000000000000000000000000000000000012
   - swh:1:cnt:0000000000000000000000000000000000000015
   - swh:1:cnt:0000000000000000000000000000000000000014
   - swh:1:cnt:0000000000000000000000000000000000000011
   - swh:1:emd:68d8ee6f7c1e6a07f72895d4460917c183fca21c
   - swh:1:emd:d54fab7faa95094689f605314763170cf5fa2aa7
   - swh:1:emd:a777e9317d1241a026f481b662f2b51a37297a32
+  referencing:
+  - swh:1:rel:0000000000000000000000000000000000000010
+  - swh:1:rev:0000000000000000000000000000000000000009
+  - swh:1:dir:0000000000000000000000000000000000000008
   decryption_key_shares:
     "YubiKey serial 4245067 slot 1": |
       -----BEGIN AGE ENCRYPTED FILE-----
@@ -419,6 +430,9 @@ this goal, but as all security-related tools, we can analyze some limits.
 
 Version history
 ---------------
+
+Version 3 (swh-alter 0.2.0)
+    Added ``requested`` and ``referencing`` fields to the manifest.
 
 Version 2 (swh-alter 0.0.8)
     Added support for

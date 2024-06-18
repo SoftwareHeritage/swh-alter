@@ -685,7 +685,7 @@ secret_sharing:
 """
 
 
-@pytest.fixture(params=["version-1", "version-2"])
+@pytest.fixture(params=["version-1", "version-2", "version-3"])
 def sample_recovery_bundle_path(request):
     return os.path.join(
         os.path.dirname(__file__),

@@ -398,6 +398,19 @@ class RemovableSubgraph(Subgraph):
             v["swhid"] for v in self.select_ordered(state_eq=MarkingState.REMOVABLE)
         ]
 
+    def referenced_swhids(self) -> List[ExtendedSWHID]:
+        """Returns a list of SWHIDs that are referenced by objects that can be
+        safely removed from the archive."""
+
+        referenced: Set[Vertex] = set()
+        for removable in self.select_ordered(state_eq=MarkingState.REMOVABLE):
+            referenced.update(
+                v
+                for v in removable.successors()
+                if v["state"] == MarkingState.UNREMOVABLE
+            )
+        return [v["swhid"] for v in referenced]
+
     def dot_node_attributes(self, v: Vertex) -> List[str]:
         """Get a list of attributes in DOT format for the given vertex.
 

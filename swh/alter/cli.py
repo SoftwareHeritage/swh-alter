@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import logging
 import pathlib
-from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional, Set, cast
+from typing import TYPE_CHECKING, Callable, Dict, Iterable, Optional, Set, Tuple, cast
 
 import click
 
@@ -15,6 +15,7 @@ from swh.core.cli import CONTEXT_SETTINGS
 from swh.core.cli import swh as swh_cli_group
 
 if TYPE_CHECKING:
+    from swh.model.model import Origin
     from swh.model.swhids import ExtendedSWHID
 
     from .operations import Remover
@@ -26,9 +27,8 @@ class SwhidOrUrlParamType(click.ParamType):
     name = "swhid or origin URL"
 
     def convert(self, value, param, ctx):
-        import hashlib
-
         from swh.model.exceptions import ValidationError
+        from swh.model.model import Origin
         from swh.model.swhids import ExtendedSWHID
 
         if value.startswith("swh:1:"):
@@ -37,9 +37,7 @@ class SwhidOrUrlParamType(click.ParamType):
             except ValidationError:
                 self.fail(f"expected extended SWHID, got {value!r}", param, ctx)
         else:
-            sha1 = hashlib.sha1(value.encode("utf-8")).hexdigest()
-            swhid = ExtendedSWHID.from_string(f"swh:1:ori:{sha1}")
-            return swhid
+            return Origin(url=value)
 
 
 class ClickLoggingHandler(logging.Handler):
@@ -308,7 +306,7 @@ def get_remover(ctx: click.Context, dry_run: bool = False) -> "Remover":
     help="path to the recovery bundle that will be created",
 )
 @click.argument(
-    "swhids",
+    "requested",
     metavar="<SWHID|URL>..",
     type=SwhidOrUrlParamType(),
     required=True,
@@ -317,7 +315,7 @@ def get_remover(ctx: click.Context, dry_run: bool = False) -> "Remover":
 @click.pass_context
 def remove(
     ctx,
-    swhids: List["ExtendedSWHID"],
+    requested: Tuple["Origin" | "ExtendedSWHID", ...],
     dry_run: bool,
     output_inventory_subgraph,
     output_removable_subgraph,
@@ -328,6 +326,8 @@ def remove(
     recovery_bundle,
 ) -> None:
     """Remove the given SWHIDs or URLs from the archive."""
+
+    from swh.model.model import Origin
 
     from .inventory import StuckInventoryException
     from .operations import RemoverError
@@ -351,6 +351,8 @@ def remove(
             raise click.ClickException(f"Permission denied: “{recovery_bundle}”")
 
     remover = get_remover(ctx, dry_run)
+
+    swhids = [x.swhid() if isinstance(x, Origin) else x for x in requested]
 
     try:
         removable = remover.get_removable(
@@ -377,6 +379,7 @@ def remove(
 
         decryption_key = remover.create_recovery_bundle(
             secret_sharing=secret_sharing,
+            requested=list(requested),
             removable=removable,
             recovery_bundle_path=recovery_bundle,
             removal_identifier=identifier,
@@ -417,7 +420,7 @@ def remove(
     help="Omit candidates that are referenced by other objects",
 )
 @click.argument(
-    "swhids",
+    "requested",
     metavar="<SWHID|URL>..",
     type=SwhidOrUrlParamType(),
     required=True,
@@ -425,7 +428,9 @@ def remove(
 )
 @click.pass_context
 def list_candidates(
-    ctx: click.Context, swhids: List["ExtendedSWHID"], omit_referenced: bool
+    ctx: click.Context,
+    requested: Tuple["Origin" | "ExtendedSWHID", ...],
+    omit_referenced: bool,
 ):
     """List candidates for an altering operation (e.g. removal)
 
@@ -437,6 +442,7 @@ def list_candidates(
     """
 
     from swh.graph.http_client import GraphAPIError, RemoteGraphClient
+    from swh.model.model import Origin
     from swh.storage import get_storage
 
     from .inventory import get_raw_extrinsic_metadata, make_inventory
@@ -451,6 +457,7 @@ def list_candidates(
 
     storage = get_storage(**conf["storage"])
 
+    swhids = [x.swhid() if isinstance(x, Origin) else x for x in requested]
     subgraph = make_inventory(storage, graph_client, swhids)
     if omit_referenced:
         subgraph = mark_removable(storage, graph_client, subgraph)
@@ -489,6 +496,8 @@ def recovery_bundle_cli_group(ctx):
 @click.pass_context
 def info(ctx, recovery_bundle, dump_manifest, show_encrypted_secrets) -> None:
     """Display the manifest of the given recovery bundle."""
+    from swh.model.model import Origin
+
     from .recovery_bundle import RecoveryBundle
 
     bundle = RecoveryBundle(recovery_bundle)
@@ -508,9 +517,17 @@ def info(ctx, recovery_bundle, dump_manifest, show_encrypted_secrets) -> None:
         click.echo("\n        ".join(lines))
     if bundle.expire:
         click.echo(f"Expire: {bundle.expire}")
+    if bundle.version >= 3:
+        click.echo("Removal requested for:")
+        for x in bundle.requested:
+            click.echo(f"- {x.url if isinstance(x, Origin) else x}")
     click.echo("SWHID of the objects present in the bundle:")
     for swhid in bundle.swhids:
         click.echo(f"- {swhid}")
+    if bundle.version >= 3 and len(bundle.referencing):
+        click.echo("SWHID referenced by objects in this bundle:")
+        for swhid in bundle.referencing:
+            click.echo(f"- {swhid}")
     click.echo("Secret share holders:")
     for share_id in sorted(bundle.share_ids):
         click.echo(f"- {share_id}")

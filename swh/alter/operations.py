@@ -66,6 +66,7 @@ class Removable(NamedTuple):
     be then used with :py:meth:`Remover.create_recovery_bundle`."""
 
     removable_swhids: List[ExtendedSWHID]
+    referencing: List[ExtendedSWHID]
 
 
 STORAGE_OBJECT_DELETE_CHUNK_SIZE = 200
@@ -130,16 +131,18 @@ class Remover:
         if output_removable_subgraph:
             removable_subgraph.write_dot(output_removable_subgraph)
             output_removable_subgraph.close()
-        removable_subgraph.delete_unremovable()
-        if output_pruned_removable_subgraph:
-            removable_subgraph.write_dot(output_pruned_removable_subgraph)
-            output_pruned_removable_subgraph.close()
+        referencing = list(removable_subgraph.referenced_swhids())
         removable_swhids = list(removable_subgraph.removable_swhids())
         removable_swhids.extend(
             get_raw_extrinsic_metadata(self.storage, removable_swhids)
         )
+        if output_pruned_removable_subgraph:
+            removable_subgraph.delete_unremovable()
+            removable_subgraph.write_dot(output_pruned_removable_subgraph)
+            output_pruned_removable_subgraph.close()
         return Removable(
             removable_swhids=removable_swhids,
+            referencing=referencing,
         )
 
     def register_object(self, obj: BaseModel) -> None:
@@ -217,6 +220,7 @@ class Remover:
         self,
         /,
         secret_sharing: SecretSharing,
+        requested: List[Origin | ExtendedSWHID],
         removable: Removable,
         recovery_bundle_path: str,
         removal_identifier: str,
@@ -232,6 +236,8 @@ class Remover:
             path=recovery_bundle_path,
             storage=self.storage,
             removal_identifier=removal_identifier,
+            requested=requested,
+            referencing=removable.referencing,
             object_public_key=object_public_key,
             decryption_key_shares=decryption_key_shares,
             registration_callback=self.register_object,

@@ -12,7 +12,7 @@ import attr
 import pytest
 import yaml
 
-from swh.model.model import Content
+from swh.model.model import Content, Origin
 from swh.model.swhids import ExtendedSWHID
 
 from ..recovery_bundle import (
@@ -21,6 +21,7 @@ from ..recovery_bundle import (
     RecoveryBundleCreator,
     SecretRecoveryError,
     SecretSharing,
+    UnsupportedFeatureException,
     age_decrypt,
     age_encrypt,
     convert_bits,
@@ -49,11 +50,17 @@ from .conftest import (
 @pytest.fixture
 def manifest_dict():
     return {
-        "version": 1,
+        "version": 3,
         "removal_identifier": "TDN-2023-06-18-01",
         "created": datetime.datetime(
             2023, 6, 18, 13, 12, 42, tzinfo=datetime.timezone.utc
         ),
+        "requested": [
+            Origin(url="https://example.com/swh/graph2"),
+            ExtendedSWHID.from_string(
+                "swh:1:snp:0000000000000000000000000000000000000022"
+            ),
+        ],
         "swhids": [
             ExtendedSWHID.from_string(s)
             for s in (
@@ -68,6 +75,14 @@ def manifest_dict():
                 "swh:1:cnt:0000000000000000000000000000000000000015",
                 "swh:1:cnt:0000000000000000000000000000000000000014",
                 "swh:1:cnt:0000000000000000000000000000000000000011",
+            )
+        ],
+        "referencing": [
+            ExtendedSWHID.from_string(s)
+            for s in (
+                "swh:1:rel:0000000000000000000000000000000000000010",
+                "swh:1:rev:0000000000000000000000000000000000000009",
+                "swh:1:dir:0000000000000000000000000000000000000012",
             )
         ],
         "decryption_key_shares": {
@@ -103,7 +118,11 @@ def manifest_dict():
 
 @pytest.fixture
 def manifest_dict_dumpable(manifest_dict):
+    manifest_dict["requested"] = [
+        x.url if isinstance(x, Origin) else str(x) for x in manifest_dict["requested"]
+    ]
     manifest_dict["swhids"] = [str(s) for s in manifest_dict["swhids"]]
+    manifest_dict["referencing"] = [str(s) for s in manifest_dict["referencing"]]
     return manifest_dict
 
 
@@ -122,6 +141,7 @@ def test_manifest_load_success_with_no_optionals(manifest_dict_dumpable):
     [
         pytest.param({"version": 42}, id="invalid_version"),
         pytest.param({"expire": "2024-06-18T13:12:42Z"}, id="str_instead_of_datetime"),
+        pytest.param({"requested": []}, id="empty_requested"),
         pytest.param({"swhids": []}, id="empty_swhids"),
         pytest.param({"decryption_key_shares": {}}, id="empty_shares"),
         pytest.param({"invalid": "field"}, id="invalid_field"),
@@ -134,9 +154,12 @@ def test_manifest_load_failure(manifest_dict_dumpable, invalid_manifest_dict):
 
 
 EXPECTED_MANIFEST_DUMP = """\
-version: 1
+version: 3
 removal_identifier: TDN-2023-06-18-01
 created: 2023-06-18T13:12:42+00:00
+requested:
+- https://example.com/swh/graph2
+- swh:1:snp:0000000000000000000000000000000000000022
 swhids:
 - swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165
 - swh:1:snp:0000000000000000000000000000000000000022
@@ -149,6 +172,10 @@ swhids:
 - swh:1:cnt:0000000000000000000000000000000000000015
 - swh:1:cnt:0000000000000000000000000000000000000014
 - swh:1:cnt:0000000000000000000000000000000000000011
+referencing:
+- swh:1:rel:0000000000000000000000000000000000000010
+- swh:1:rev:0000000000000000000000000000000000000009
+- swh:1:dir:0000000000000000000000000000000000000012
 decryption_key_shares:
   YubiKey serial 4245067 slot 1: |
     -----BEGIN AGE ENCRYPTED FILE-----
@@ -579,6 +606,17 @@ def test_create_recovery_bundle(
         path=bundle_path,
         storage=sample_populated_storage,
         removal_identifier="test_bundle",
+        requested=[
+            Origin("https://github.com/user1/repo1"),
+            Origin("https://github.com/user2/repo1"),
+        ],
+        referencing=[
+            ExtendedSWHID.from_string(s)
+            for s in (
+                "swh:1:cnt:36fade77193cb6d2bd826161a0979d64c28ab4fa",
+                "swh:1:dir:8505808532953da7d2581741f01b29c04b1cb9ab",
+            )
+        ],
         object_public_key=OBJECT_PUBLIC_KEY,
         decryption_key_shares=encrypted_shares_for_object_private_key,
         registration_callback=register,
@@ -624,6 +662,12 @@ def test_create_recovery_bundle(
         manifest = Manifest.load(bundle.read("manifest.yml"))
         assert isinstance(manifest, Manifest)
         assert manifest.removal_identifier == "test_bundle"
+        assert (
+            ExtendedSWHID.from_string(
+                "swh:1:cnt:36fade77193cb6d2bd826161a0979d64c28ab4fa"
+            )
+            in manifest.referencing
+        )
         # Can we unpack, decrypt and load at least an object?
         encrypted_serialized_content = bundle.read(
             "contents/swh_1_cnt_d81cc0710eb6cf9efd5b920a8453e1e07157b6cd.age"
@@ -696,6 +740,8 @@ def test_create_recovery_bundle_fails_if_empty(
             path=bundle_path,
             storage=sample_populated_storage,
             removal_identifier="test_bundle",
+            requested=[Origin("https://github.com/user1/repo1")],
+            referencing=[],
             object_public_key=OBJECT_PUBLIC_KEY,
             decryption_key_shares=encrypted_shares_for_object_private_key,
         ) as _:
@@ -713,6 +759,8 @@ def test_create_recovery_bundle_fails_without_decryption_key_shares(
             path=bundle_path,
             storage=sample_populated_storage,
             removal_identifier="test_bundle",
+            requested=[Origin("https://github.com/user1/repo1")],
+            referencing=[],
             object_public_key=OBJECT_PUBLIC_KEY,
             decryption_key_shares={},
         ) as creator:
@@ -731,6 +779,8 @@ def test_create_recovery_bundle_with_optional_fields(
         path=bundle_path,
         storage=sample_populated_storage,
         removal_identifier="test_bundle",
+        requested=[Origin("https://github.com/user1/repo1")],
+        referencing=[],
         object_public_key=OBJECT_PUBLIC_KEY,
         decryption_key_shares=encrypted_shares_for_object_private_key,
     ) as creator:
@@ -757,6 +807,32 @@ def test_recovery_bundle_decryption_key_provider_is_optional(
     # But trying to get the object_decryption_key will fail
     with pytest.raises(ValueError):
         _ = bundle.object_decryption_key
+
+
+def test_recovery_bundle_requested(request, sample_recovery_bundle):
+    if "version-1" in request.keywords or "version-2" in request.keywords:
+        with pytest.raises(UnsupportedFeatureException):
+            _ = sample_recovery_bundle.requested
+    else:
+        assert sample_recovery_bundle.requested == [
+            Origin(url="https://github.com/user1/repo1"),
+            Origin(url="https://github.com/user2/repo1"),
+        ]
+
+
+def test_recovery_bundle_referencing(request, sample_recovery_bundle):
+    if "version-1" in request.keywords or "version-2" in request.keywords:
+        with pytest.raises(UnsupportedFeatureException):
+            _ = sample_recovery_bundle.referencing
+    else:
+        assert sample_recovery_bundle.referencing == [
+            ExtendedSWHID.from_string(
+                "swh:1:cnt:36fade77193cb6d2bd826161a0979d64c28ab4fa"
+            ),
+            ExtendedSWHID.from_string(
+                "swh:1:dir:8505808532953da7d2581741f01b29c04b1cb9ab"
+            ),
+        ]
 
 
 def test_recovery_bundle_get_dict(sample_recovery_bundle):

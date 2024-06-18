@@ -43,6 +43,7 @@ import yaml
 from swh.core.api.classes import stream_results
 from swh.core.utils import grouper
 from swh.journal.serializers import kafka_to_value, value_to_kafka
+from swh.model.exceptions import ValidationError
 from swh.model.model import (
     BaseModel,
     Content,
@@ -89,6 +90,7 @@ class _ManifestDumper(yaml.SafeDumper):
         self.add_representer(str, self._represent_str)
         self.add_representer(datetime, self._represent_datetime)
         self.add_representer(ExtendedSWHID, self._represent_swhid)
+        self.add_representer(Origin, self._represent_origin)
 
     def _represent_str(self, dumper, data):
         if "\n" in data:
@@ -102,6 +104,9 @@ class _ManifestDumper(yaml.SafeDumper):
 
     def _represent_swhid(self, dumper, data):
         return dumper.represent_scalar("tag:yaml.org,2002:str", str(data), style="")
+
+    def _represent_origin(self, dumper, data):
+        return dumper.represent_scalar("tag:yaml.org,2002:str", data.url, style="")
 
 
 def check_call(command: Sequence[str], **kwargs) -> subprocess.CompletedProcess:
@@ -123,19 +128,35 @@ class Manifest:
         validator=[
             attrs.validators.instance_of(int),
             attrs.validators.ge(1),
-            attrs.validators.le(2),
+            attrs.validators.le(3),
         ]
     )
     removal_identifier: str = attrs.field(validator=[attrs.validators.instance_of(str)])
     created: datetime = attrs.field(validator=attrs.validators.instance_of(datetime))
+    requested: List[Origin | ExtendedSWHID] = attrs.field(
+        validator=attrs.validators.instance_of(list)
+    )
     swhids: List[ExtendedSWHID] = attrs.field(
         validator=attrs.validators.instance_of(list)
     )
+    referencing: List[ExtendedSWHID] = attrs.field(
+        validator=attrs.validators.instance_of(list)
+    )
+
+    @requested.validator
+    def _ensure_requested_length(self, attribute, value):
+        if self.version >= 3 and len(value) == 0:
+            raise ValueError("“request” must be a list of ExtendedSWHID or Origin")
 
     @swhids.validator
     def _ensure_swhids_type(self, attribute, value):
         if not all(isinstance(swhid, ExtendedSWHID) for swhid in value):
             raise ValueError("“swhids” must be a list of ExtendedSWHID")
+
+    @referencing.validator
+    def _ensure_referencing_type(self, attribute, value):
+        if not all(isinstance(swhid, ExtendedSWHID) for swhid in value):
+            raise ValueError("“referencing” must be a list of ExtendedSWHID")
 
     decryption_key_shares: Dict[str, str] = attrs.field(
         validator=[attrs.validators.instance_of(dict), attrs.validators.min_len(2)]
@@ -155,6 +176,9 @@ class Manifest:
         for optionals in ("reason", "expire"):
             if d[optionals] is None:
                 del d[optionals]
+        if self.version < 3:
+            d.pop("requested", None)
+            d.pop("referencing", None)
         return yaml.dump(
             d,
             stream=stream,
@@ -167,9 +191,40 @@ class Manifest:
         d = yaml.safe_load(str_or_stream)
         if not isinstance(d, dict):
             raise ValueError("Invalid manifest: not a mapping")
-        if "swhids" in d and isinstance(d["swhids"], list) and len(d["swhids"]) < 1:
-            raise ValueError("Invalid manifest: “swhids” is not a list or empty")
+        if not isinstance(d.get("version"), int):
+            raise ValueError("Invalid manifest: version missing or not an int")
+        # Convert `swhids`
+        if (
+            "swhids" not in d
+            or not isinstance(d["swhids"], list)
+            or len(d["swhids"]) == 0
+        ):
+            raise ValueError("Invalid manifest: “swhids” is not a list or is empty")
         d["swhids"] = [ExtendedSWHID.from_string(s) for s in d["swhids"]]
+        if d["version"] >= 3:
+            # Convert `requested`
+            if (
+                "requested" in d
+                and isinstance(d["requested"], list)
+                and len(d["requested"]) < 1
+            ):
+                raise ValueError("Invalid manifest: “requested” is not a list or empty")
+            requested: List[Origin | ExtendedSWHID] = []
+            for s in d["requested"]:
+                try:
+                    requested.append(ExtendedSWHID.from_string(s))
+                except ValidationError:
+                    requested.append(Origin(url=s))
+            d["requested"] = requested
+            # Convert `referencing`
+            if "referencing" in d and not isinstance(d["referencing"], list):
+                raise ValueError("Invalid manifest: “referencing” is not a list")
+            d["referencing"] = [
+                ExtendedSWHID.from_string(s) for s in d.get("referencing", [])
+            ]
+        else:
+            d["requested"] = []
+            d["referencing"] = []
         return Manifest(**d)
 
 
@@ -464,6 +519,10 @@ def recover_object_decryption_key_from_encrypted_shares(
     raise SecretRecoveryError("Unable to decrypt enough secrets")
 
 
+class UnsupportedFeatureException(Exception):
+    pass
+
+
 MANIFEST_ARCNAME = "manifest.yml"
 
 
@@ -500,8 +559,24 @@ class RecoveryBundle:
         return self._manifest.created
 
     @property
+    def requested(self) -> List[Origin | ExtendedSWHID]:
+        if self.version < 3:
+            raise UnsupportedFeatureException(
+                f"`requested` is not available on recovery bundle version {self.version}"
+            )
+        return self._manifest.requested
+
+    @property
     def swhids(self) -> List[ExtendedSWHID]:
         return self._manifest.swhids
+
+    @property
+    def referencing(self) -> List[ExtendedSWHID]:
+        if self.version < 3:
+            raise UnsupportedFeatureException(
+                f"`referencing` is not available on recovery bundle version {self.version}"
+            )
+        return self._manifest.referencing
 
     @property
     def reason(self) -> Optional[str]:
@@ -802,6 +877,8 @@ class RecoveryBundleCreator:
         path: str,
         storage: StorageInterface,
         removal_identifier: str,
+        requested: List[Origin | ExtendedSWHID],
+        referencing: List[ExtendedSWHID],
         object_public_key: AgePublicKey,
         decryption_key_shares: Dict[str, str],
         registration_callback: Optional[Callable[[BaseModel], None]] = None,
@@ -809,7 +886,9 @@ class RecoveryBundleCreator:
         self._path = path
         self._storage = storage
         self._removal_identifier = removal_identifier
+        self._requested = requested
         self._swhids: List[ExtendedSWHID] = []
+        self._referencing = referencing
         self._created = datetime.now(timezone.utc)
         self._pk = object_public_key
         if len(decryption_key_shares) == 0:
@@ -835,10 +914,12 @@ class RecoveryBundleCreator:
             if len(self._swhids) == 0:
                 raise ValueError("Refusing to create an empty recovery bundle")
             manifest = Manifest(
-                version=2,
+                version=3,
                 removal_identifier=self._removal_identifier,
                 created=self._created,
+                requested=self._requested,
                 swhids=self._swhids,
+                referencing=self._referencing,
                 decryption_key_shares=self._decryption_key_shares,
                 reason=self._reason,
                 expire=self._expire,
