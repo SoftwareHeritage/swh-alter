@@ -353,22 +353,22 @@ def remove(
     remover = get_remover(ctx, dry_run)
 
     try:
-        removable_swhids = remover.get_removable(
+        removable = remover.get_removable(
             swhids,
             output_inventory_subgraph=output_inventory_subgraph,
             output_removable_subgraph=output_removable_subgraph,
             output_pruned_removable_subgraph=output_pruned_removable_subgraph,
         )
         if dry_run == "stop-before-recovery-bundle":
-            click.echo(f"We would remove {len(removable_swhids)} objects:")
-            for swhid in removable_swhids:
+            click.echo(f"We would remove {len(removable.removable_swhids)} objects:")
+            for swhid in removable.removable_swhids:
                 click.echo(f" - {swhid}")
             ctx.exit(0)
 
         if dry_run is None:
             click.confirm(
                 click.style(
-                    f"Proceed with removing {len(removable_swhids)} SWHIDs?",
+                    f"Proceed with removing {len(removable.removable_swhids)} SWHIDs?",
                     fg="yellow",
                     bold=True,
                 ),
@@ -377,7 +377,7 @@ def remove(
 
         decryption_key = remover.create_recovery_bundle(
             secret_sharing=secret_sharing,
-            removable_swhids=removable_swhids,
+            removable=removable,
             recovery_bundle_path=recovery_bundle,
             removal_identifier=identifier,
             reason=reason,

@@ -11,7 +11,7 @@ import logging
 import operator
 import statistics
 import time
-from typing import Dict, FrozenSet, List, Optional, Set, TextIO, Tuple, cast
+from typing import Dict, FrozenSet, List, NamedTuple, Optional, Set, TextIO, Tuple, cast
 
 import humanize
 from tabulate import tabulate
@@ -61,6 +61,13 @@ def format_duration(seconds: float) -> str:
     )
 
 
+class Removable(NamedTuple):
+    """Aggregates information returned by :py:meth:`Remover.get_removable` to
+    be then used with :py:meth:`Remover.create_recovery_bundle`."""
+
+    removable_swhids: List[ExtendedSWHID]
+
+
 STORAGE_OBJECT_DELETE_CHUNK_SIZE = 200
 RECOVERY_BUNDLE_BACKUP_SWHIDS_CHUNK_SIZE = 200
 
@@ -106,7 +113,7 @@ class Remover:
         output_inventory_subgraph: Optional[TextIO] = None,
         output_removable_subgraph: Optional[TextIO] = None,
         output_pruned_removable_subgraph: Optional[TextIO] = None,
-    ) -> List[ExtendedSWHID]:
+    ) -> Removable:
         _secho("Removing the following origins:")
         for swhid in swhids:
             _secho(f" - {swhid}")
@@ -131,7 +138,9 @@ class Remover:
         removable_swhids.extend(
             get_raw_extrinsic_metadata(self.storage, removable_swhids)
         )
-        return removable_swhids
+        return Removable(
+            removable_swhids=removable_swhids,
+        )
 
     def register_object(self, obj: BaseModel) -> None:
         # Register for removal from storage
@@ -208,7 +217,7 @@ class Remover:
         self,
         /,
         secret_sharing: SecretSharing,
-        removable_swhids: List[ExtendedSWHID],
+        removable: Removable,
         recovery_bundle_path: str,
         removal_identifier: str,
         reason: Optional[str] = None,
@@ -236,10 +245,10 @@ class Remover:
                     raise RemoverError(f"Unable to set expiration date: {str(ex)}")
             bar: ProgressBar[int]
             with self.progressbar(
-                length=len(removable_swhids), label="Backing up objects…"
+                length=len(removable.removable_swhids), label="Backing up objects…"
             ) as bar:
                 for chunk in grouper(
-                    removable_swhids, RECOVERY_BUNDLE_BACKUP_SWHIDS_CHUNK_SIZE
+                    removable.removable_swhids, RECOVERY_BUNDLE_BACKUP_SWHIDS_CHUNK_SIZE
                 ):
                     swhid_count = creator.backup_swhids(chunk)
                     bar.update(n_steps=swhid_count)

@@ -20,7 +20,7 @@ from swh.objstorage.interface import ObjStorageInterface
 from swh.search.interface import SearchInterface
 from swh.storage.interface import StorageInterface
 
-from ..operations import Remover, RemoverError
+from ..operations import Removable, Remover, RemoverError
 from ..recovery_bundle import SecretSharing
 from .conftest import (
     OBJECT_SECRET_KEY,
@@ -44,8 +44,8 @@ def test_remover_get_removable(remover):
         ExtendedSWHID.from_string("swh:1:ori:83404f995118bd25774f4ac14422a8f175e7a054"),
         ExtendedSWHID.from_string("swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165"),
     ]
-    removable_swhids = remover.get_removable(swhids)
-    assert len(removable_swhids) == 33
+    removable = remover.get_removable(swhids)
+    assert len(removable.removable_swhids) == 33
 
 
 @pytest.mark.skipif(
@@ -135,7 +135,7 @@ def test_remover_create_recovery_bundle(
     }
     remover.create_recovery_bundle(
         secret_sharing=SecretSharing.from_dict(secret_sharing_conf),
-        removable_swhids=swhids,
+        removable=Removable(removable_swhids=swhids),
         recovery_bundle_path=bundle_path,
         removal_identifier="test",
         reason="doing a test",
@@ -168,7 +168,7 @@ def test_remover_create_recovery_bundle_fails_with_expire_in_the_past(
     with pytest.raises(RemoverError, match="Unable to set expiration date"):
         remover.create_recovery_bundle(
             secret_sharing=SecretSharing.from_dict(secret_sharing_conf),
-            removable_swhids=swhids,
+            removable=Removable(removable_swhids=swhids),
             recovery_bundle_path=bundle_path,
             removal_identifier="test",
             reason="doing a test",
@@ -557,7 +557,7 @@ def test_remover_restore_recovery_bundle(
     ]
     remover.create_recovery_bundle(
         secret_sharing=SecretSharing.from_dict(secret_sharing_conf),
-        removable_swhids=swhids,
+        removable=Removable(removable_swhids=swhids),
         recovery_bundle_path=bundle_path,
         removal_identifier="test",
     )

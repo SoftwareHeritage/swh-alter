@@ -29,7 +29,7 @@ from ..cli import (
     rollover,
 )
 from ..inventory import StuckInventoryException
-from ..operations import Remover
+from ..operations import Removable, Remover
 from ..recovery_bundle import AgeSecretKey, age_decrypt
 from .conftest import (
     OBJECT_SECRET_KEY,
@@ -164,7 +164,9 @@ def test_cli_remove_dry_run_stop_before_recovery_bundle(
         ExtendedSWHID.from_string("swh:1:ori:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
         ExtendedSWHID.from_string("swh:1:ori:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
     ]
-    mocker.patch.object(Remover, "get_removable", return_value=removable_swhids)
+    mocker.patch.object(
+        Remover, "get_removable", return_value=Removable(removable_swhids)
+    )
     create_recovery_bundle_method = mocker.patch.object(
         Remover, "create_recovery_bundle"
     )
@@ -200,7 +202,9 @@ def test_cli_remove_dry_run_stop_before_removal(
         ExtendedSWHID.from_string("swh:1:ori:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
         ExtendedSWHID.from_string("swh:1:ori:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
     ]
-    mocker.patch.object(Remover, "get_removable", return_value=removable_swhids)
+    mocker.patch.object(
+        Remover, "get_removable", return_value=Removable(removable_swhids)
+    )
     create_recovery_bundle_method = mocker.patch.object(
         Remover, "create_recovery_bundle"
     )
@@ -231,7 +235,9 @@ def test_cli_remove_display_decryption_key(
     remove_config_path,
     tmp_path,
 ):
-    mocker.patch.object(Remover, "get_removable", return_value=[])
+    mocker.patch.object(
+        Remover, "get_removable", return_value=Removable(removable_swhids=[])
+    )
     mocker.patch.object(
         Remover, "create_recovery_bundle", return_value="SUPER-SECRET-KEY"
     )
@@ -354,7 +360,9 @@ def test_cli_remove_errors_when_inventory_is_stuck(
 def test_cli_remove_origin_conversions(
     mocker, mocked_external_resources, remove_config
 ):
-    mocker.patch.object(Remover, "get_removable", return_value=[])
+    mocker.patch.object(
+        Remover, "get_removable", return_value=Removable(removable_swhids=[])
+    )
     runner = CliRunner()
     runner.invoke(
         remove,
@@ -378,7 +386,9 @@ def test_cli_remove_origin_conversions(
 
 
 def test_cli_remove_output_subgraphs(mocker, mocked_external_resources, remove_config):
-    mocker.patch.object(Remover, "get_removable", return_value=[])
+    mocker.patch.object(
+        Remover, "get_removable", return_value=Removable(removable_swhids=[])
+    )
     swhid = "swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165"
     runner = CliRunner()
     runner.invoke(
@@ -425,7 +435,9 @@ def remover_for_bundle_creation(mocker):
     swhids = [
         ExtendedSWHID.from_string("swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165")
     ]
-    mocker.patch.object(remover, "get_removable", return_value=swhids)
+    mocker.patch.object(
+        remover, "get_removable", return_value=Removable(removable_swhids=swhids)
+    )
 
     def mock_create_recovery_bundle(*args, **kwargs):
         remover.swhids_to_remove = swhids
