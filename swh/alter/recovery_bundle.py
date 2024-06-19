@@ -67,7 +67,7 @@ from swh.storage.interface import HashDict, StorageInterface
 from .bech32 import Encoding as Bech32Encoding
 from .bech32 import bech32_decode, bech32_encode, convert_bits
 from .progressbar import ProgressBar, ProgressBarInit, no_progressbar
-from .utils import iter_swhids_grouped_by_type
+from .utils import filter_objects_missing_from_storage, iter_swhids_grouped_by_type
 
 logger = logging.getLogger(__name__)
 
@@ -687,6 +687,17 @@ class RecoveryBundle:
         if self.version < 2:
             return
         yield from self._objects("extids", ExtID)
+
+    def get_missing_referenced_objects(
+        self, storage: StorageInterface
+    ) -> Set[ExtendedSWHID]:
+        if self.version < 3:
+            raise UnsupportedFeatureException(
+                "`get_missing_referenced_objects` is not supported on "
+                f"recovery bundle version {self.version}"
+            )
+        available = filter_objects_missing_from_storage(storage, self.referencing)
+        return set(self.referencing) - set(available)
 
     def restore(
         self, storage: StorageInterface, progressbar: ProgressBarInit = no_progressbar

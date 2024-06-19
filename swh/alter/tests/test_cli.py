@@ -925,18 +925,29 @@ def restore_config_path(tmp_path, restore_config):
     return str(restore_config_path)
 
 
+@pytest.fixture
+def restore_ready_storage(swh_storage, sample_data):
+    swh_storage.metadata_authority_add(sample_data.authorities)
+    swh_storage.metadata_fetcher_add(sample_data.fetchers)
+    swh_storage.content_add([sample_data.content2])
+    swh_storage.directory_add([sample_data.directory2])
+    result = swh_storage.flush()
+    assert result == {
+        "content:add": 1,
+        "content:add:bytes": 5,
+        "directory:add": 1,
+        "object_reference:add": 1,
+    }
+
+
 def test_cli_recovery_bundle_restore_adds_all_objects(
     request,
     capture_output,
     sample_recovery_bundle_path,
-    swh_storage,
+    restore_ready_storage,
     sample_data,
     restore_config_path,
 ):
-    if "version-1" not in request.keywords:
-        # See comment in test_recovery_bundle.py:test_restore()
-        swh_storage.metadata_authority_add(sample_data.authorities)
-        swh_storage.metadata_fetcher_add(sample_data.fetchers)
     runner = CliRunner()
     result = runner.invoke(
         alter_cli_group,
@@ -1051,7 +1062,7 @@ def test_cli_recovery_bundle_restore_bad_decryption_key_argument(
 
 def test_cli_recovery_bundle_restore_wrong_decryption_key(
     sample_recovery_bundle_path,
-    swh_storage,
+    restore_ready_storage,
     restore_config,
 ):
     runner = CliRunner()
@@ -1085,6 +1096,88 @@ def test_cli_recovery_bundle_restore_non_existent_bundle(
         )
         assert result.exit_code != 0
         assert "does not exist" in result.output
+
+
+def test_cli_recovery_bundle_restore_missing_objects_canceled(
+    request,
+    sample_recovery_bundle_path,
+    swh_storage,
+    restore_config_path,
+):
+    if "version-1" in request.keywords or "version-2" in request.keywords:
+        pytest.skip("old bundles will not check for missing objects")
+    runner = CliRunner()
+    result = runner.invoke(
+        alter_cli_group,
+        [
+            "recovery-bundle",
+            "restore",
+            f"--decryption-key={OBJECT_SECRET_KEY}",
+            sample_recovery_bundle_path,
+        ],
+        env={"SWH_CONFIG_FILENAME": restore_config_path},
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 1, result.output
+    assert "objects that are missing from storage" in result.output
+    assert "swh:1:dir:8505808532953da7d2581741f01b29c04b1cb9ab" in result.output
+    assert "references to missing objects? [y/N]" in result.output
+    assert "Aborted" in result.output
+
+
+def test_cli_recovery_bundle_restore_missing_objects_confirmed(
+    request,
+    swh_storage,
+    restore_config_path,
+    sample_recovery_bundle_path,
+    sample_data,
+):
+    if "version-1" in request.keywords or "version-2" in request.keywords:
+        pytest.skip("old bundles will not check for missing objects")
+    # See comment in test_recovery_bundle.py:test_restore()
+    swh_storage.metadata_authority_add(sample_data.authorities)
+    swh_storage.metadata_fetcher_add(sample_data.fetchers)
+    runner = CliRunner()
+    result = runner.invoke(
+        alter_cli_group,
+        [
+            "recovery-bundle",
+            "restore",
+            f"--decryption-key={OBJECT_SECRET_KEY}",
+            sample_recovery_bundle_path,
+        ],
+        env={"SWH_CONFIG_FILENAME": restore_config_path},
+        catch_exceptions=False,
+        input="y\n",
+    )
+    assert result.exit_code == 0, result.output
+    assert "references to missing objects? [y/N]" in result.output
+
+
+def test_cli_recovery_bundle_restore_skip_missing_objects(
+    request,
+    restore_ready_storage,
+    restore_config_path,
+    sample_recovery_bundle_path,
+):
+    if "version-1" not in request.keywords and "version-2" not in request.keywords:
+        pytest.skip("newer bundles will check for missing objects")
+    runner = CliRunner()
+    result = runner.invoke(
+        alter_cli_group,
+        [
+            "recovery-bundle",
+            "restore",
+            f"--decryption-key={OBJECT_SECRET_KEY}",
+            sample_recovery_bundle_path,
+        ],
+        env={"SWH_CONFIG_FILENAME": restore_config_path},
+        catch_exceptions=False,
+    )
+    assert (
+        "Skipping checks for missing referenced objects: "
+        f"recovery bundle “{sample_recovery_bundle_path}” is too old."
+    ) in result.output
 
 
 @pytest.fixture

@@ -835,6 +835,32 @@ def test_recovery_bundle_referencing(request, sample_recovery_bundle):
         ]
 
 
+def test_recovery_bundle_get_missing_referenced_objects(
+    request, sample_recovery_bundle, swh_storage, sample_data
+):
+    if "version-1" in request.keywords or "version-2" in request.keywords:
+        with pytest.raises(UnsupportedFeatureException):
+            _ = sample_recovery_bundle.referencing
+        return
+
+    # swh_storage is empty at this point
+    assert sample_recovery_bundle.get_missing_referenced_objects(swh_storage) == {
+        ExtendedSWHID.from_string(s)
+        for s in (
+            "swh:1:cnt:36fade77193cb6d2bd826161a0979d64c28ab4fa",
+            "swh:1:dir:8505808532953da7d2581741f01b29c04b1cb9ab",
+        )
+    }
+    # now load these objects
+    swh_storage.content_add([sample_data.content2])
+    swh_storage.directory_add([sample_data.directory2])
+    result = swh_storage.flush()
+    assert result["content:add"] == 1
+    assert result["directory:add"] == 1
+    # none should be missing
+    assert sample_recovery_bundle.get_missing_referenced_objects(swh_storage) == set()
+
+
 def test_recovery_bundle_get_dict(sample_recovery_bundle):
     swhid = ExtendedSWHID.from_string(
         "swh:1:ori:33abd4b4c5db79c7387673f71302750fd73e0645"

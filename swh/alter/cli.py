@@ -821,7 +821,11 @@ def restore(
     ctx, recovery_bundle, decryption_key=None, identity=None, secret=None
 ) -> None:
     """Restore a recovery bundle to Software Heritage archive."""
-    from .recovery_bundle import RecoveryBundle, WrongDecryptionKey
+    from .recovery_bundle import (
+        RecoveryBundle,
+        UnsupportedFeatureException,
+        WrongDecryptionKey,
+    )
 
     conf = ctx.obj["config"]
     from swh.storage import get_storage
@@ -830,6 +834,33 @@ def restore(
 
     secret_key_provider = get_object_decryption_key_provider(ctx)
     bundle = RecoveryBundle(recovery_bundle, secret_key_provider)
+    try:
+        missing = bundle.get_missing_referenced_objects(restoration_storage)
+        if len(missing) > 0:
+            click.secho(
+                "Objects to be restored are referencing objects that "
+                "are missing from storage:",
+                fg="yellow",
+                bold=True,
+            )
+            for swhid in missing:
+                click.secho(f"- {swhid}", fg="yellow")
+            click.confirm(
+                click.style(
+                    "Proceed with restoration though it will create "
+                    "references to missing objects?",
+                    fg="yellow",
+                    bold=True,
+                ),
+                abort=True,
+            )
+    except UnsupportedFeatureException:
+        click.secho(
+            "Skipping checks for missing referenced objects: "
+            f"recovery bundle “{recovery_bundle}” is too old.",
+            fg="yellow",
+            bold=True,
+        )
     try:
         bundle.restore(restoration_storage, progressbar)
     except WrongDecryptionKey:
