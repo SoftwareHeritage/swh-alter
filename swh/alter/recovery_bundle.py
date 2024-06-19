@@ -809,9 +809,14 @@ class RecoveryBundleCreator:
         self._path = path
         self._storage = storage
         self._removal_identifier = removal_identifier
+        self._swhids: List[ExtendedSWHID] = []
         self._created = datetime.now(timezone.utc)
         self._pk = object_public_key
+        if len(decryption_key_shares) == 0:
+            raise ValueError("`decryption_key_shares` has not been set")
         self._decryption_key_shares = decryption_key_shares
+        self._reason: Optional[str] = None
+        self._expire: Optional[datetime] = None
         if registration_callback:
             self._registration_callback = registration_callback
         else:
@@ -819,13 +824,6 @@ class RecoveryBundleCreator:
 
     def __enter__(self) -> Self:
         self._zip = ZipFile(self._path, "x")
-        self._manifest = Manifest(
-            version=2,
-            removal_identifier=self._removal_identifier,
-            created=self._created,
-            swhids=[],
-            decryption_key_shares=self._decryption_key_shares,
-        )
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -834,11 +832,18 @@ class RecoveryBundleCreator:
                 with contextlib.suppress(FileNotFoundError):
                     os.unlink(self._path)
                 return False
-            if len(self._manifest.swhids) == 0:
+            if len(self._swhids) == 0:
                 raise ValueError("Refusing to create an empty recovery bundle")
-            if len(self._manifest.decryption_key_shares) == 0:
-                raise ValueError("`decryption_key_shares` has not been set")
-            self._zip.writestr(MANIFEST_ARCNAME, self._manifest.dump())
+            manifest = Manifest(
+                version=2,
+                removal_identifier=self._removal_identifier,
+                created=self._created,
+                swhids=self._swhids,
+                decryption_key_shares=self._decryption_key_shares,
+                reason=self._reason,
+                expire=self._expire,
+            )
+            self._zip.writestr(MANIFEST_ARCNAME, manifest.dump())
         except:  # noqa: E722
             with contextlib.suppress(FileNotFoundError):
                 os.unlink(self._path)
@@ -847,12 +852,12 @@ class RecoveryBundleCreator:
             self._zip.close()
 
     def set_reason(self, reason: str):
-        self._manifest.reason = reason
+        self._reason = reason
 
     def set_expire(self, expire: datetime):
-        if expire < self._manifest.created:
+        if expire < self._created:
             raise ValueError("expiration date is in the past")
-        self._manifest.expire = expire
+        self._expire = expire
 
     def _write(self, arcname: str, data: bytes):
         self._zip.writestr(arcname, age_encrypt(self._pk, data))
@@ -1088,7 +1093,7 @@ class RecoveryBundleCreator:
             self._registration_callback(obj)
             if hasattr(obj, "swhid"):
                 swhid = obj.swhid()
-                self._manifest.swhids.append(
+                self._swhids.append(
                     swhid.to_extended() if hasattr(swhid, "to_extended") else swhid
                 )
             count += 1
