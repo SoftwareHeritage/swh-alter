@@ -303,7 +303,6 @@ def test_remover_remove_from_objstorages_object_missing_from_all_objstorages(
     ]
     with caplog.at_level(logging.INFO):
         remover.remove_from_objstorages()
-    print(caplog.text)
     expected = textwrap.dedent(
         """\
         Objects not found in any objstorage:
