@@ -114,14 +114,17 @@ def test_remover_create_recovery_bundle(
     tmp_path,
 ):
     swhids = [
-        "swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165",
-        "swh:1:snp:0000000000000000000000000000000000000022",
-        "swh:1:rel:0000000000000000000000000000000000000021",
-        "swh:1:rev:0000000000000000000000000000000000000018",
-        "swh:1:rev:0000000000000000000000000000000000000013",
-        "swh:1:dir:0000000000000000000000000000000000000017",
-        "swh:1:cnt:0000000000000000000000000000000000000015",
-        "swh:1:cnt:0000000000000000000000000000000000000014",
+        ExtendedSWHID.from_string(s)
+        for s in (
+            "swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165",
+            "swh:1:snp:0000000000000000000000000000000000000022",
+            "swh:1:rel:0000000000000000000000000000000000000021",
+            "swh:1:rev:0000000000000000000000000000000000000018",
+            "swh:1:rev:0000000000000000000000000000000000000013",
+            "swh:1:dir:0000000000000000000000000000000000000017",
+            "swh:1:cnt:0000000000000000000000000000000000000015",
+            "swh:1:cnt:0000000000000000000000000000000000000014",
+        )
     ]
     bundle_path = tmp_path / "test.swh-recovery-bundle"
     expire = datetime.now(timezone.utc) + timedelta(days=365)
@@ -132,7 +135,7 @@ def test_remover_create_recovery_bundle(
     }
     remover.create_recovery_bundle(
         secret_sharing=SecretSharing.from_dict(secret_sharing_conf),
-        removable_swhids=[ExtendedSWHID.from_string(swhid) for swhid in swhids],
+        removable_swhids=swhids,
         recovery_bundle_path=bundle_path,
         removal_identifier="test",
         reason="doing a test",
@@ -157,14 +160,15 @@ def test_remover_create_recovery_bundle_fails_with_expire_in_the_past(
     tmp_path,
 ):
     swhids = [
-        "swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165",
+        ExtendedSWHID.from_string(s)
+        for s in ("swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165",)
     ]
     bundle_path = tmp_path / "test.swh-recovery-bundle"
     expire = datetime.fromisoformat("2001-01-01").astimezone()
     with pytest.raises(RemoverError, match="Unable to set expiration date"):
         remover.create_recovery_bundle(
             secret_sharing=SecretSharing.from_dict(secret_sharing_conf),
-            removable_swhids=[ExtendedSWHID.from_string(swhid) for swhid in swhids],
+            removable_swhids=swhids,
             recovery_bundle_path=bundle_path,
             removal_identifier="test",
             reason="doing a test",
