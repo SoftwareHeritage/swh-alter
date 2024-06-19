@@ -168,7 +168,7 @@ class Manifest:
         if not isinstance(d, dict):
             raise ValueError("Invalid manifest: not a mapping")
         if "swhids" in d and isinstance(d["swhids"], list) and len(d["swhids"]) < 1:
-            raise ValueError("Invalid manifest: list of SWHID is empty")
+            raise ValueError("Invalid manifest: “swhids” is not a list or empty")
         d["swhids"] = [ExtendedSWHID.from_string(s) for s in d["swhids"]]
         return Manifest(**d)
 

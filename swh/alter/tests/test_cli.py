@@ -1132,7 +1132,7 @@ Created: 2023-07-27T15:17:13+00:00
 Reason: We needed perform some tests.
         Even with a reason on multiple lines.
 Expire: 2023-08-27 13:12:00+00:00
-List of SWHID objects:
+SWHID of the objects present in the bundle:
 - swh:1:cnt:d81cc0710eb6cf9efd5b920a8453e1e07157b6cd
 - swh:1:cnt:c932c7649c6dfa4b82327d121215116909eb3bea
 - swh:1:cnt:33e45d56f88993aae6a0198013efa80716fd8920
@@ -1172,7 +1172,7 @@ Recovery bundle “test_bundle”
 =============================
 
 Created: 2023-07-27T15:17:13+00:00
-List of SWHID objects:
+SWHID of the objects present in the bundle:
 - swh:1:cnt:d81cc0710eb6cf9efd5b920a8453e1e07157b6cd
 - swh:1:cnt:c932c7649c6dfa4b82327d121215116909eb3bea
 - swh:1:cnt:33e45d56f88993aae6a0198013efa80716fd8920
@@ -1254,7 +1254,7 @@ Recovery bundle “test_bundle”
 =============================
 
 Created: 2024-06-03T14:08:55+00:00
-List of SWHID objects:
+SWHID of the objects present in the bundle:
 - swh:1:cnt:d81cc0710eb6cf9efd5b920a8453e1e07157b6cd
 - swh:1:cnt:c932c7649c6dfa4b82327d121215116909eb3bea
 - swh:1:cnt:33e45d56f88993aae6a0198013efa80716fd8920

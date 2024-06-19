@@ -508,7 +508,7 @@ def info(ctx, recovery_bundle, dump_manifest, show_encrypted_secrets) -> None:
         click.echo("\n        ".join(lines))
     if bundle.expire:
         click.echo(f"Expire: {bundle.expire}")
-    click.echo("List of SWHID objects:")
+    click.echo("SWHID of the objects present in the bundle:")
     for swhid in bundle.swhids:
         click.echo(f"- {swhid}")
     click.echo("Secret share holders:")
