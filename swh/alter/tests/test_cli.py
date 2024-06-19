@@ -58,6 +58,21 @@ DEFAULT_CONFIG = {
 }
 
 
+@pytest.fixture(scope="module", autouse=True)
+def isolate_loggers():
+    from ..operations import logger as operations_logger
+    from ..recovery_bundle import logger as recovery_bundle_logger
+
+    yield
+
+    # Undo logger configuration from cli.py:alter_cli_group()
+    for logger in (operations_logger, recovery_bundle_logger):
+        while logger.hasHandlers() and len(logger.handlers) > 0:
+            logger.handlers[0].close()
+            logger.removeHandler(logger.handlers[0])
+        logger.propagate = True
+
+
 @pytest.fixture
 def mocked_external_resources(
     mocker,
