@@ -11,13 +11,24 @@ This module implements the inventory stage of the
 from contextlib import suppress
 import itertools
 import logging
-from typing import Any, Callable, Dict, Iterator, List, NamedTuple, Optional, Set, Tuple
+from typing import (
+    Any,
+    Callable,
+    Collection,
+    Dict,
+    Iterator,
+    List,
+    NamedTuple,
+    Optional,
+    Set,
+    Tuple,
+)
 
 from igraph import Vertex
 
 from swh.core.api.classes import stream_results, stream_results_optional
 from swh.graph.http_client import GraphArgumentException, RemoteGraphClient
-from swh.model.model import Revision
+from swh.model.model import Origin, Revision
 from swh.model.swhids import ExtendedObjectType as ObjectType
 from swh.model.swhids import ExtendedSWHID
 from swh.storage.algos.origin import iter_origin_visit_statuses, iter_origin_visits
@@ -28,6 +39,24 @@ from .progressbar import ProgressBar, ProgressBarInit, no_progressbar
 from .subgraph import Subgraph
 
 logger = logging.getLogger(__name__)
+
+
+class OriginNotFound(Exception):
+    def __init__(self, swhid: ExtendedSWHID):
+        self.swhid = swhid
+
+    def get_label(self, requested: Collection[Origin | ExtendedSWHID]) -> str:
+        """Returns either an origin URL if it can be found in requested and the
+        SWHID otherwise."""
+
+        return next(
+            (
+                x.url
+                for x in requested
+                if isinstance(x, Origin) and x.swhid() == self.swhid
+            ),
+            str(self.swhid),
+        )
 
 
 class StuckInventoryException(Exception):
@@ -354,8 +383,7 @@ class Lister:
         v_source = self._subgraph.add_swhid(source, complete=True)
         [origin_d] = self._storage.origin_get_by_sha1([source.object_id])
         if not origin_d:
-            logger.warning("origin %s not found in storage", source)
-            return
+            raise OriginNotFound(source)
         for visit in iter_origin_visits(self._storage, origin_d["url"]):
             assert visit.visit is not None  # make mypy happy
             for status in iter_origin_visit_statuses(

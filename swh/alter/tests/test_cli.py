@@ -28,7 +28,7 @@ from ..cli import (
     resume_removal,
     rollover,
 )
-from ..inventory import StuckInventoryException
+from ..inventory import OriginNotFound, StuckInventoryException
 from ..operations import Removable, Remover
 from ..recovery_bundle import AgeSecretKey, age_decrypt
 from .conftest import (
@@ -376,6 +376,37 @@ def test_cli_remove_errors_when_inventory_is_stuck(
     assert result.exit_code == 1, result.output
     assert "Inventory phase got stuck" in result.stderr
     assert "swh:1:ori:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" in result.stderr
+
+
+def test_cli_remove_errors_when_origin_is_not_found(
+    mocker, mocked_external_resources, remove_config
+):
+    mocker.patch.object(
+        Remover,
+        "get_removable",
+        side_effect=OriginNotFound(
+            ExtendedSWHID.from_string(
+                "swh:1:ori:83404f995118bd25774f4ac14422a8f175e7a054"
+            )
+        ),
+    )
+    runner = CliRunner(mix_stderr=False)
+    result = runner.invoke(
+        remove,
+        [
+            "--identifier",
+            "test",
+            "--recovery-bundle",
+            "/nonexistent",
+            "--dry-run=stop-before-recovery-bundle",
+            "https://example.com/swh/graph",
+            "swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165",
+        ],
+        obj={"config": remove_config},
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 1, result.output
+    assert "Origin “https://example.com/swh/graph” not found" in result.stderr
 
 
 def test_cli_remove_origin_conversions(
@@ -739,6 +770,31 @@ def test_cli_list_candidates_stuck_inventory(
     assert result.exit_code == 1
     assert "Inventory phase got stuck" in result.stderr
     assert "swh:1:cnt:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" in result.stderr
+
+
+def test_cli_list_candidates_origin_not_found(
+    mocker, mocked_external_resources, remove_config
+):
+    runner = CliRunner(mix_stderr=False)
+    mocker.patch(
+        "swh.alter.inventory.make_inventory",
+        side_effect=OriginNotFound(
+            ExtendedSWHID.from_string(
+                "swh:1:ori:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            )
+        ),
+    )
+    result = runner.invoke(
+        list_candidates,
+        ["swh:1:ori:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
+        obj={"config": remove_config},
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 1
+    assert (
+        "Origin “swh:1:ori:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa” not found"
+        in result.stderr
+    )
 
 
 def test_cli_recovery_bundle_resume_removal_restores_bundle_when_remove_fails(

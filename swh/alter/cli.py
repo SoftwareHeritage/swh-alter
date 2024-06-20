@@ -331,7 +331,7 @@ def remove(
 
     from swh.model.model import Origin
 
-    from .inventory import StuckInventoryException
+    from .inventory import OriginNotFound, StuckInventoryException
     from .operations import RemoverError
     from .recovery_bundle import SecretSharing
 
@@ -392,6 +392,14 @@ def remove(
     except RemoverError as e:
         click.secho(e.args[0], err=True, fg="red")
         ctx.exit(1)
+    except OriginNotFound as e:
+        click.secho(
+            f"Origin “{e.get_label(requested)}” not found.",
+            err=True,
+            fg="red",
+            bold=True,
+        )
+        ctx.exit(1)
     except StuckInventoryException as e:
         click.secho(
             "Inventory phase got stuck. Unable to look up the following SWHIDs:\n",
@@ -448,6 +456,7 @@ def list_candidates(
     from swh.storage import get_storage
 
     from .inventory import (
+        OriginNotFound,
         StuckInventoryException,
         get_raw_extrinsic_metadata,
         make_inventory,
@@ -476,6 +485,14 @@ def list_candidates(
             bold=True,
         )
         click.secho("\n".join(f"- {swhid}" for swhid in e.swhids), err=True, fg="red")
+        ctx.exit(1)
+    except OriginNotFound as e:
+        click.secho(
+            f"Origin “{e.get_label(requested)}” not found.",
+            err=True,
+            fg="red",
+            bold=True,
+        )
         ctx.exit(1)
     if omit_referenced:
         subgraph = mark_removable(
