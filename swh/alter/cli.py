@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 import pathlib
+import sys
 from typing import TYPE_CHECKING, Callable, Dict, Iterable, Optional, Set, Tuple, cast
 
 import click
@@ -68,6 +69,7 @@ def progressbar(
         show_pos=show_pos,
         show_percent=show_percent,
         item_show_func=item_show_func,
+        file=sys.stderr,
     )
     # We have to use `cast()` to renconcile the case where
     # length is used and `click.progressbar()` returns a
@@ -445,7 +447,11 @@ def list_candidates(
     from swh.model.model import Origin
     from swh.storage import get_storage
 
-    from .inventory import get_raw_extrinsic_metadata, make_inventory
+    from .inventory import (
+        StuckInventoryException,
+        get_raw_extrinsic_metadata,
+        make_inventory,
+    )
     from .removable import mark_removable
 
     conf = ctx.obj["config"]
@@ -458,9 +464,23 @@ def list_candidates(
     storage = get_storage(**conf["storage"])
 
     swhids = [x.swhid() if isinstance(x, Origin) else x for x in requested]
-    subgraph = make_inventory(storage, graph_client, swhids)
+    try:
+        subgraph = make_inventory(
+            storage, graph_client, swhids, progressbar=progressbar
+        )
+    except StuckInventoryException as e:
+        click.secho(
+            "Inventory phase got stuck. Unable to look up the following SWHIDs:\n",
+            err=True,
+            fg="red",
+            bold=True,
+        )
+        click.secho("\n".join(f"- {swhid}" for swhid in e.swhids), err=True, fg="red")
+        ctx.exit(1)
     if omit_referenced:
-        subgraph = mark_removable(storage, graph_client, subgraph)
+        subgraph = mark_removable(
+            storage, graph_client, subgraph, progressbar=progressbar
+        )
         subgraph.delete_unremovable()
     removable_swhids = list(subgraph.swhids())
     removable_swhids.extend(get_raw_extrinsic_metadata(storage, removable_swhids))

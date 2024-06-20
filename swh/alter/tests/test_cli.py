@@ -716,6 +716,31 @@ def test_cli_list_candidates_multiple_swhids(mocked_external_resources, remove_c
     }
 
 
+def test_cli_list_candidates_stuck_inventory(
+    mocker, mocked_external_resources, remove_config
+):
+    runner = CliRunner(mix_stderr=False)
+    mocker.patch(
+        "swh.alter.inventory.make_inventory",
+        side_effect=StuckInventoryException(
+            [
+                ExtendedSWHID.from_string(
+                    "swh:1:cnt:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                )
+            ]
+        ),
+    )
+    result = runner.invoke(
+        list_candidates,
+        ["swh:1:ori:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
+        obj={"config": remove_config},
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 1
+    assert "Inventory phase got stuck" in result.stderr
+    assert "swh:1:cnt:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" in result.stderr
+
+
 def test_cli_recovery_bundle_resume_removal_restores_bundle_when_remove_fails(
     request,
     capture_output,
