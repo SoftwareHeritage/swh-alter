@@ -121,7 +121,7 @@ In most cases, multiple *storages* have to be configured:
   archive and create recovery bundles. For the latter, it needs to be able to
   retrieve data from Content objects (through an *objstorage*).
 - The ``restoration_storage`` section defines the storage which will be written
-  to in case recovery bundles need to be resored. Usually, this should be the
+  to in case recovery bundles need to be restored. Usually, this should be the
   same configuration as used for *loaders*. Write access is required. For
   the restoration to fully work, it also needs to be configured to write to an
   *objstorage* and a *journal*.
