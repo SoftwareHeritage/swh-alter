@@ -144,7 +144,9 @@ class Remover:
         referencing = list(removable_subgraph.referenced_swhids())
         removable_swhids = list(removable_subgraph.removable_swhids())
         removable_swhids.extend(
-            get_raw_extrinsic_metadata(self.storage, removable_swhids)
+            get_raw_extrinsic_metadata(
+                self.storage, removable_swhids, progressbar=self.progressbar
+            )
         )
         if output_pruned_removable_subgraph:
             removable_subgraph.delete_unremovable()

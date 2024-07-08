@@ -475,7 +475,9 @@ def make_inventory(
 
 
 def get_raw_extrinsic_metadata(
-    storage: StorageInterface, referencing_swhids: List[ExtendedSWHID]
+    storage: StorageInterface,
+    referencing_swhids: List[ExtendedSWHID],
+    progressbar: Optional[ProgressBarInit] = None,
 ) -> Iterator[ExtendedSWHID]:
     """Find RawExtrinsicMetadata referencing the given SWHIDs.
 
@@ -484,14 +486,23 @@ def get_raw_extrinsic_metadata(
     in the order of the iterations: the objects coming first are
     referenced by objects latter in the list.
     """
+    progressbar_init: ProgressBarInit = progressbar or no_progressbar
+    more_label = ""
     while len(referencing_swhids) > 0:
         found_swhids = []
-        for target_swhid in referencing_swhids:
-            authorities = storage.raw_extrinsic_metadata_get_authorities(target_swhid)
-            for authority in authorities:
-                for emd in stream_results(
-                    storage.raw_extrinsic_metadata_get, target_swhid, authority
-                ):
-                    found_swhids.append(emd.swhid())
+        with progressbar_init(
+            referencing_swhids,
+            label=f"Finding {more_label}RawExtrinsicMetadata objects…",
+        ) as bar:
+            for target_swhid in bar:
+                authorities = storage.raw_extrinsic_metadata_get_authorities(
+                    target_swhid
+                )
+                for authority in authorities:
+                    for emd in stream_results(
+                        storage.raw_extrinsic_metadata_get, target_swhid, authority
+                    ):
+                        found_swhids.append(emd.swhid())
         yield from found_swhids
         referencing_swhids = found_swhids
+        more_label = f"more {more_label}"

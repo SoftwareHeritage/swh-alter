@@ -562,7 +562,9 @@ def list_candidates(
         )
         subgraph.delete_unremovable()
     removable_swhids = list(subgraph.swhids())
-    removable_swhids.extend(get_raw_extrinsic_metadata(storage, removable_swhids))
+    removable_swhids.extend(
+        get_raw_extrinsic_metadata(storage, removable_swhids, progressbar=progressbar)
+    )
     for swhid in removable_swhids:
         click.echo(swhid)
 
