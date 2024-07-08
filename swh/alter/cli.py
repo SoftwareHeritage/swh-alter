@@ -423,16 +423,15 @@ def remove(
             output_removable_subgraph=output_removable_subgraph,
             output_pruned_removable_subgraph=output_pruned_removable_subgraph,
         )
+        removable.print_plan()
         if dry_run == "stop-before-recovery-bundle":
-            click.echo(f"We would remove {len(removable.removable_swhids)} objects:")
-            for swhid in removable.removable_swhids:
-                click.echo(f" - {swhid}")
+            click.echo("Stopping before creating the recovery bundle as requested.")
             ctx.exit(0)
 
         if dry_run is None:
             click.confirm(
                 click.style(
-                    f"Proceed with removing {len(removable.removable_swhids)} SWHIDs?",
+                    "Proceed?",
                     fg="yellow",
                     bold=True,
                 ),

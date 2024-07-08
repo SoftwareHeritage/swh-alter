@@ -205,7 +205,7 @@ def test_cli_remove_dry_run_stop_before_recovery_bundle(
             catch_exceptions=False,
         )
     assert result.exit_code == 0
-    assert "We would remove 2 objects" in result.output
+    assert "Stopping before creating the recovery bundle as requested" in result.output
     create_recovery_bundle_method.assert_not_called()
     remove_method.assert_not_called()
 

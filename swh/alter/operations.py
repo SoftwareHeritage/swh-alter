@@ -68,6 +68,34 @@ class Removable(NamedTuple):
     removable_swhids: List[ExtendedSWHID]
     referencing: List[ExtendedSWHID]
 
+    def print_plan(self) -> None:
+        ordering = {
+            t: i
+            for i, t in enumerate(
+                (
+                    ExtendedObjectType.ORIGIN,
+                    ExtendedObjectType.SNAPSHOT,
+                    ExtendedObjectType.RELEASE,
+                    ExtendedObjectType.REVISION,
+                    ExtendedObjectType.DIRECTORY,
+                    ExtendedObjectType.CONTENT,
+                    ExtendedObjectType.RAW_EXTRINSIC_METADATA,
+                )
+            )
+        }
+        sorted_swhids = sorted(
+            self.removable_swhids, key=lambda swhid: ordering[swhid.object_type]
+        )
+        _secho("Removal plan:")
+        for object_type, grouped_swhids in itertools.groupby(
+            sorted_swhids, key=operator.attrgetter("object_type")
+        ):
+            _secho(f"- {object_type.name.capitalize()}: {len(list(grouped_swhids))}")
+        _secho(
+            "- … and more objects that are not adresseable by a SWHID "
+            "(OriginVisit, OriginVisitStatus, ExtID)."
+        )
+
 
 STORAGE_OBJECT_DELETE_CHUNK_SIZE = 200
 RECOVERY_BUNDLE_BACKUP_SWHIDS_CHUNK_SIZE = 200
