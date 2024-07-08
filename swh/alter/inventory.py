@@ -161,6 +161,10 @@ class Lister:
                 total,
                 remaining,
             )
+        if self._progressbar:
+            self._progressbar.update(
+                1, current_item=ProgressBarItem(None, len(self._subgraph.vs), 0)
+            )
 
     def _fetch_candidates_using_graph(self, vertex) -> None:
         # We don’t except all SWHID to be present in swh.graph
@@ -415,12 +419,15 @@ _ADD_EDGES_USING_STORAGE_METHODS_PER_OBJECT_TYPE: Dict[
 
 
 class ProgressBarItem(NamedTuple):
-    origin: ExtendedSWHID
+    origin: Optional[ExtendedSWHID]
     total: int
     remaining: int
 
     def __str__(self) -> str:
-        return f"{self.origin} ({self.total} objects found / {self.remaining} left to look up)"
+        return (
+            f"{self.origin or 'done'} "
+            f"({self.total} objects found / {self.remaining} left to look up)"
+        )
 
 
 def make_inventory(
