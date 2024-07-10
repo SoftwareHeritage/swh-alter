@@ -92,7 +92,7 @@ class Removable(NamedTuple):
         ):
             _secho(f"- {object_type.name.capitalize()}: {len(list(grouped_swhids))}")
         _secho(
-            "- … and more objects that are not adresseable by a SWHID "
+            "- … and more objects that are not addresseable by a SWHID "
             "(OriginVisit, OriginVisitStatus, ExtID)."
         )
 
