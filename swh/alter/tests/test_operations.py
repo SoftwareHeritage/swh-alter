@@ -167,6 +167,7 @@ def test_remover_create_recovery_bundle(
     remover,
     secret_sharing_conf,
     tmp_path,
+    sample_populated_storage,
 ):
     swhids = [
         ExtendedSWHID.from_string(s)

@@ -849,6 +849,16 @@ class RecoveryBundle:
                     os.unlink(f.name)
 
 
+class ContentDataNotFound(Exception):
+    """Raised when data for a given Content object cannot be retrieved."""
+
+    def __init__(self, swhid: ExtendedSWHID):
+        self.swhid = swhid
+
+    def __str__(self):
+        return f"No data found for {self.swhid}"
+
+
 def _swhid_to_arcname(swhid: ExtendedSWHID):
     basename = str(swhid).replace(":", "_")
     if swhid.object_type == ExtendedObjectType.CONTENT:
@@ -895,6 +905,7 @@ class RecoveryBundleCreator:
         object_public_key: AgePublicKey,
         decryption_key_shares: Dict[str, str],
         registration_callback: Optional[Callable[[BaseModel], None]] = None,
+        allow_empty_content_objects: bool = False,
     ):
         self._path = path
         self._storage = storage
@@ -913,6 +924,7 @@ class RecoveryBundleCreator:
             self._registration_callback = registration_callback
         else:
             self._registration_callback = lambda _: None
+        self._allow_empty_content_objects = allow_empty_content_objects
         # Total number of RawExtrinsingMetadata that will be added
         self._total_emds: Optional[int] = None
         # Current number of RawExtrinsingMetadata objects seen
@@ -991,13 +1003,22 @@ class RecoveryBundleCreator:
                     yield skipped_content
             else:
                 data = self._storage.content_get_data(_from_hashes(**content.hashes()))
-                if data is None:
-                    raise ValueError(f"Unable to retrieve data for {swhid}")
-                populated_content = content.from_data(
-                    data,
-                    status=content.status,
-                    ctime=content.ctime,
-                )
+                if data is not None:
+                    populated_content = content.from_data(
+                        data,
+                        status=content.status,
+                        ctime=content.ctime,
+                    )
+                else:
+                    if self._allow_empty_content_objects:
+                        logger.warning(
+                            "No data available for %s. "
+                            "Recording empty Content object as requested.",
+                            swhid,
+                        )
+                        populated_content = content
+                    else:
+                        raise ContentDataNotFound(swhid)
                 self._write(
                     _swhid_to_arcname(swhid),
                     value_to_kafka(populated_content.to_dict()),

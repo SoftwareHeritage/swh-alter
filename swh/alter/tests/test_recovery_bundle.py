@@ -5,6 +5,7 @@
 
 import datetime
 import itertools
+import logging
 import os
 import shutil
 
@@ -16,6 +17,7 @@ from swh.model.model import Content, Origin
 from swh.model.swhids import ExtendedSWHID
 
 from ..recovery_bundle import (
+    ContentDataNotFound,
     Manifest,
     RecoveryBundle,
     RecoveryBundleCreator,
@@ -826,6 +828,75 @@ def test_create_recovery_bundle_refuses_multiple_backup_call_with_emd(
         # Trying to add a second batch must fail
         with pytest.raises(ValueError, match="RawExtrinsingMetdata objects"):
             creator.backup_swhids([swhids[1]])
+
+
+def test_create_recovery_bundle_when_content_data_not_found(
+    mocker, tmp_path, sample_populated_storage, encrypted_shares_for_object_private_key
+):
+    bundle_path = tmp_path / "test.swh-recovery-bundle"
+    swhids = [
+        ExtendedSWHID.from_string(s)
+        for s in (
+            # Content
+            "swh:1:cnt:d81cc0710eb6cf9efd5b920a8453e1e07157b6cd",
+            "swh:1:cnt:c932c7649c6dfa4b82327d121215116909eb3bea",
+        )
+    ]
+    # None means data for the given hashes have not been found
+    mocker.patch.object(sample_populated_storage, "content_get_data", return_value=None)
+    with pytest.raises(ContentDataNotFound):
+        with RecoveryBundleCreator(
+            path=bundle_path,
+            storage=sample_populated_storage,
+            removal_identifier="test_bundle",
+            requested=[
+                Origin("https://github.com/user1/repo1"),
+            ],
+            referencing=[],
+            object_public_key=OBJECT_PUBLIC_KEY,
+            decryption_key_shares=encrypted_shares_for_object_private_key,
+        ) as creator:
+            creator.backup_swhids(swhids)
+
+
+def test_create_recovery_bundle_when_content_data_not_found_warns(
+    mocker,
+    caplog,
+    tmp_path,
+    sample_populated_storage,
+    encrypted_shares_for_object_private_key,
+):
+    bundle_path = tmp_path / "test.swh-recovery-bundle"
+    swhids = [
+        ExtendedSWHID.from_string(s)
+        for s in (
+            # Content
+            "swh:1:cnt:c932c7649c6dfa4b82327d121215116909eb3bea",
+            "swh:1:cnt:d81cc0710eb6cf9efd5b920a8453e1e07157b6cd",
+        )
+    ]
+    # None means data for the given hashes have not been found
+    mocker.patch.object(sample_populated_storage, "content_get_data", return_value=None)
+    with caplog.at_level(logging.WARNING):
+        with RecoveryBundleCreator(
+            path=bundle_path,
+            storage=sample_populated_storage,
+            removal_identifier="test_bundle",
+            requested=[
+                Origin("https://github.com/user1/repo1"),
+            ],
+            referencing=[],
+            object_public_key=OBJECT_PUBLIC_KEY,
+            decryption_key_shares=encrypted_shares_for_object_private_key,
+            allow_empty_content_objects=True,
+        ) as creator:
+            creator.backup_swhids(swhids)
+    assert caplog.messages == [
+        "No data available for swh:1:cnt:c932c7649c6dfa4b82327d121215116909eb3bea. "
+        "Recording empty Content object as requested.",
+        "No data available for swh:1:cnt:d81cc0710eb6cf9efd5b920a8453e1e07157b6cd. "
+        "Recording empty Content object as requested.",
+    ]
 
 
 def test_recovery_bundle_decryption_key_provider_is_optional(

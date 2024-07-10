@@ -365,6 +365,12 @@ def get_remover(ctx: click.Context, dry_run: bool = False) -> "Remover":
         "one SWHID per line"
     ),
 )
+@click.option(
+    "--allow-empty-content-objects/--disallow-empty-content-objects",
+    "allow_empty_content_objects",
+    default=False,
+    help="Create recovery bundle even when data for Content object cannot be found",
+)
 @click.argument(
     "requested",
     metavar="<SWHID|URL>..",
@@ -386,6 +392,7 @@ def remove(
     recovery_bundle,
     known_missing_swhids,
     known_missing_file,
+    allow_empty_content_objects,
 ) -> None:
     """Remove the given SWHIDs or URLs from the archive."""
 
@@ -393,7 +400,7 @@ def remove(
 
     from .inventory import OriginNotFound, StuckInventoryException
     from .operations import RemoverError
-    from .recovery_bundle import SecretSharing
+    from .recovery_bundle import ContentDataNotFound, SecretSharing
 
     try:
         secret_sharing = SecretSharing.from_dict(
@@ -446,6 +453,7 @@ def remove(
             removal_identifier=identifier,
             reason=reason,
             expire=expire.astimezone() if expire else None,
+            allow_empty_content_objects=allow_empty_content_objects,
         )
         click.secho(f"Recovery bundle decryption key: {decryption_key}", fg="blue")
     except RemoverError as e:
@@ -468,6 +476,20 @@ def remove(
             bold=True,
         )
         click.secho("\n".join(f"- {swhid}" for swhid in e.swhids), err=True, fg="red")
+        ctx.exit(1)
+    except ContentDataNotFound as e:
+        click.secho(
+            f"Content “{e.swhid}” exists, but its data was not found.",
+            err=True,
+            fg="red",
+            bold=True,
+        )
+        click.secho(
+            "Consider using `--allow-empty-content-objects` but only "
+            "if the above is expected.",
+            err=True,
+            fg="yellow",
+        )
         ctx.exit(1)
 
     if dry_run == "stop-before-removal":

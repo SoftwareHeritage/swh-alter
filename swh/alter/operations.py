@@ -265,6 +265,7 @@ class Remover:
         removal_identifier: str,
         reason: Optional[str] = None,
         expire: Optional[datetime] = None,
+        allow_empty_content_objects: bool = False,
     ) -> AgeSecretKey:
         object_public_key, self.object_secret_key = generate_age_keypair()
         decryption_key_shares = secret_sharing.generate_encrypted_shares(
@@ -280,6 +281,7 @@ class Remover:
             object_public_key=object_public_key,
             decryption_key_shares=decryption_key_shares,
             registration_callback=self.register_object,
+            allow_empty_content_objects=allow_empty_content_objects,
         ) as creator:
             if reason is not None:
                 creator.set_reason(reason)

@@ -31,7 +31,7 @@ from ..cli import (
 )
 from ..inventory import OriginNotFound, StuckInventoryException
 from ..operations import Removable, Remover
-from ..recovery_bundle import AgeSecretKey, age_decrypt
+from ..recovery_bundle import AgeSecretKey, ContentDataNotFound, age_decrypt
 from .conftest import (
     OBJECT_SECRET_KEY,
     TWO_GROUPS_REQUIRED_WITH_ONE_MINIMUM_SHARE_EACH_SECRET_SHARING_YAML,
@@ -80,7 +80,7 @@ def mocked_external_resources(
     graph_client_with_only_initial_origin,
     sample_populated_storage,
 ):
-    mocker.patch.object(sample_populated_storage, "content_get")
+    # mocker.patch.object(sample_populated_storage, "content_get")
     mocker.patch(
         "swh.storage.get_storage",
         return_value=sample_populated_storage,
@@ -594,6 +594,73 @@ def test_cli_remove_known_missing_stdin(
             "swh:1:rev:cccccccccccccccccccccccccccccccccccccccc",
         )
     }
+
+
+def test_cli_remove_errors_when_content_data_not_found(
+    mocker, tmp_path, mocked_external_resources, remove_config
+):
+    mocker.patch.object(
+        Remover,
+        "create_recovery_bundle",
+        side_effect=ContentDataNotFound(
+            ExtendedSWHID.from_string(
+                "swh:1:cnt:c932c7649c6dfa4b82327d121215116909eb3bea"
+            )
+        ),
+    )
+    runner = CliRunner(mix_stderr=False)
+    result = runner.invoke(
+        remove,
+        [
+            "--identifier",
+            "test",
+            "--recovery-bundle",
+            str(tmp_path / "bundle"),
+            "--dry-run=stop-before-removal",
+            "https://example.com/swh/graph",
+            "swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165",
+        ],
+        obj={"config": remove_config},
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 1, result.output
+    assert (
+        "Content “swh:1:cnt:c932c7649c6dfa4b82327d121215116909eb3bea” exists, "
+        "but its data was not found." in result.stderr
+    )
+    assert "--allow-empty-content-objects" in result.stderr
+
+
+def test_cli_remove_allow_empty_content_objects(
+    mocker,
+    tmp_path,
+    mocked_external_resources,
+    sample_populated_storage,
+    remove_config_path,
+):
+    mocker.patch.object(
+        sample_populated_storage.objstorage, "content_get", return_value=None
+    )
+    runner = CliRunner(mix_stderr=False)
+    result = runner.invoke(
+        alter_cli_group,
+        [
+            "remove",
+            "--identifier",
+            "test",
+            "--recovery-bundle",
+            str(tmp_path / "bundle"),
+            "--dry-run=stop-before-removal",
+            "--allow-empty-content-objects",
+            "https://example.com/swh/graph",
+            "swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165",
+        ],
+        env={"SWH_CONFIG_FILENAME": remove_config_path},
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.output
+    assert "swh:1:cnt:0000000000000000000000000000000000000001" in result.output
+    assert "Recording empty Content object as requested." in result.output
 
 
 @pytest.fixture
