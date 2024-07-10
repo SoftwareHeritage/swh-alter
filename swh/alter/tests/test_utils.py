@@ -54,6 +54,9 @@ def test_iter_swhids_grouped_by_type(
         assert all(swhid.object_type == object_type for swhid in swhids)
         yield from swhids
 
+    def chunker(swhids):
+        yield list(swhids)
+
     handlers = {
         object_type: partial(handle_swhids, object_type)
         for object_type in [
@@ -69,7 +72,7 @@ def test_iter_swhids_grouped_by_type(
         set(str(swhid) for swhid in swhids)
         for _, swhids in itertools.groupby(
             iter_swhids_grouped_by_type(
-                randomized_swhid_list, handlers=handlers, collector=list
+                randomized_swhid_list, handlers=handlers, chunker=chunker
             ),
             key=operator.attrgetter("object_type"),
         )
@@ -110,7 +113,7 @@ def test_iter_swhids_grouped_by_type(
     ]
 
 
-def test_iter_swhids_grouped_by_type_no_collector(
+def test_iter_swhids_grouped_by_type_no_chunker(
     randomized_swhid_list: List[ExtendedSWHID],
 ) -> None:
     def handle_swhids(

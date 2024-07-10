@@ -31,7 +31,7 @@ def iter_swhids_grouped_by_type(
     swhids: Iterable[ExtendedSWHID],
     *,
     handlers: Mapping[ExtendedObjectType, Callable[[C], Iterable[T]]],
-    collector: Optional[Callable[[Iterable[ExtendedSWHID]], C]] = None,
+    chunker: Optional[Callable[[Collection[ExtendedSWHID]], Iterable[C]]] = None,
 ) -> Iterable[T]:
     """Work on a iterable of SWHIDs grouped by their type, running a different
     handler for each type.
@@ -42,15 +42,17 @@ def iter_swhids_grouped_by_type(
         swhids: an iterable over some SWHIDs
         handlers: a dictionary mapping each object type to an handler, taking
             a collection of swhids and returning an iterable
-        collector: an optional function to transform the iterable over the
-            grouped SWHIDs into a more convenient collection.
+        chunker: an optional function to split the SWHIDs of same
+            object type into multiple “chunks”. It can also transform
+            the iterable into a more convenient collection.
 
     Returns: an iterable over the handlers’ results
     """
 
-    collector_func: Callable[[Iterable[ExtendedSWHID]], C] = (
-        collector if collector is not None else lambda x: cast(C, x)
-    )
+    def _default_chunker(it: Collection[ExtendedSWHID]) -> Iterable[C]:
+        yield cast(C, it)
+
+    chunker = chunker or _default_chunker
 
     # groupby() splits consecutive groups, so we need to order the list first
     ordering: Dict[ExtendedObjectType, int] = {
@@ -66,7 +68,8 @@ def iter_swhids_grouped_by_type(
     for object_type, grouped_swhids in itertools.groupby(
         sorted_swhids, key=operator.attrgetter("object_type")
     ):
-        yield from handlers[object_type](collector_func(grouped_swhids))
+        for chunk in chunker(list(grouped_swhids)):
+            yield from handlers[object_type](chunk)
 
 
 def _filter_missing_contents(
@@ -138,8 +141,8 @@ def _filter_missing_origins(
 def filter_objects_missing_from_storage(
     storage: StorageInterface, swhids: Iterable[ExtendedSWHID]
 ) -> List[ExtendedSWHID]:
-    def collector(swhids: Iterable[ExtendedSWHID]) -> Set[bytes]:
-        return {swhid.object_id for swhid in swhids}
+    def chunker(swhids: Iterable[ExtendedSWHID]) -> Iterable[Set[bytes]]:
+        yield {swhid.object_id for swhid in swhids}
 
     handlers: Dict[
         ExtendedObjectType, Callable[[set[bytes]], Iterable[ExtendedSWHID]]
@@ -151,9 +154,7 @@ def filter_objects_missing_from_storage(
         ExtendedObjectType.SNAPSHOT: partial(_filter_missing_snapshots, storage),
         ExtendedObjectType.ORIGIN: partial(_filter_missing_origins, storage),
     }
-    return list(
-        iter_swhids_grouped_by_type(swhids, handlers=handlers, collector=collector)
-    )
+    return list(iter_swhids_grouped_by_type(swhids, handlers=handlers, chunker=chunker))
 
 
 def get_filtered_objects(

@@ -98,7 +98,6 @@ class Removable(NamedTuple):
 
 
 STORAGE_OBJECT_DELETE_CHUNK_SIZE = 200
-RECOVERY_BUNDLE_BACKUP_SWHIDS_CHUNK_SIZE = 200
 
 
 class Remover:
@@ -289,15 +288,9 @@ class Remover:
                     creator.set_expire(expire)
                 except ValueError as ex:
                     raise RemoverError(f"Unable to set expiration date: {str(ex)}")
-            bar: ProgressBar[int]
-            with self.progressbar(
-                length=len(removable.removable_swhids), label="Backing up objects…"
-            ) as bar:
-                for chunk in grouper(
-                    removable.removable_swhids, RECOVERY_BUNDLE_BACKUP_SWHIDS_CHUNK_SIZE
-                ):
-                    swhid_count = creator.backup_swhids(chunk)
-                    bar.update(n_steps=swhid_count)
+            creator.backup_swhids(
+                removable.removable_swhids, progressbar=self.progressbar
+            )
         self.recovery_bundle_path = recovery_bundle_path
         _secho("Recovery bundle created.", fg="green")
         return self.object_secret_key

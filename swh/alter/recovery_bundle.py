@@ -21,6 +21,7 @@ from typing import (
     Any,
     BinaryIO,
     Callable,
+    Collection,
     Dict,
     Iterable,
     Iterator,
@@ -80,6 +81,7 @@ if RAGE_KEYGEN_PATH is None:
     raise ImportError("`rage-keygen` not found in path")
 
 RECOVERY_BUNDLE_RESTORE_CHUNK_SIZE = 200
+
 
 logger = logging.getLogger(__name__)
 
@@ -911,6 +913,10 @@ class RecoveryBundleCreator:
             self._registration_callback = registration_callback
         else:
             self._registration_callback = lambda _: None
+        # Total number of RawExtrinsingMetadata that will be added
+        self._total_emds: Optional[int] = None
+        # Current number of RawExtrinsingMetadata objects seen
+        self._seen_emds = 0
 
     def __enter__(self) -> Self:
         self._zip = ZipFile(self._path, "x")
@@ -1134,6 +1140,10 @@ class RecoveryBundleCreator:
             swhid.object_type == ExtendedObjectType.RAW_EXTRINSIC_METADATA
             for swhid in emd_swhids
         )
+        assert (
+            self._total_emds is not None
+        ), "this should have been set by backup_swhids.chunker()"
+
         emds = self._storage.raw_extrinsic_metadata_get_by_ids(
             [swhid.object_id for swhid in emd_swhids]
         )
@@ -1143,15 +1153,17 @@ class RecoveryBundleCreator:
                 f"Unable to retrieve {', '.join(str(swhid) for swhid in missing_emd_swhids)}"
             )
         # Here we do some tricks to 0-pad the index to the right size
-        # If we have 1234 RawExtrinsicMetadata objects, `len(str(len(emds)))``
-        # will be 4. We thus get `emd_index_format` to be`{:04d}`.
+        # self._total_emds will contain the total number of RawExtrinsicMetadata
+        # objects. If it’s 1234 `len(str(self._total_emds))`` will be 4.
+        # We thus get `emd_index_format` to be`{:04d}`.
         # Calling `emd_index_format.format(33)` results in `0033`.
-        emd_index_format = "{" f":0{len(str(len(emds)))}d" "}"
-        for emd_index, emd in enumerate(emds, start=1):
+        emd_index_format = "{" f":0{len(str(self._total_emds))}d" "}"
+        for emd in emds:
+            self._seen_emds += 1
             basename = str(emd.swhid()).replace(":", "_")
             arcname = (
                 "raw_extrinsic_metadata/"
-                f"{emd_index_format.format(emd_index)}_{basename}.age"
+                f"{emd_index_format.format(self._seen_emds)}_{basename}.age"
             )
             self._write(arcname, value_to_kafka(emd.to_dict()))
             yield emd
@@ -1165,7 +1177,50 @@ class RecoveryBundleCreator:
             self._write(arcname, value_to_kafka(extid.to_dict()))
             yield extid
 
-    def backup_swhids(self, swhids: Iterable[ExtendedSWHID]) -> int:
+    def backup_swhids(
+        self,
+        swhids: Iterable[ExtendedSWHID],
+        progressbar: ProgressBarInit = no_progressbar,
+    ) -> None:
+        def chunker(
+            grouped_swhids: Collection[ExtendedSWHID],
+        ) -> Iterable[List[ExtendedSWHID]]:
+            assert (
+                len(grouped_swhids) > 0
+            ), "iter_swhids_grouped_by_type() should not give us an empty list"
+
+            swhids_it = iter(sorted(grouped_swhids))
+            first_swhid = next(swhids_it)
+            match first_swhid.object_type:
+                case ExtendedObjectType.RAW_EXTRINSIC_METADATA:
+                    # As we want to number RawExtrinsingMetadata with proper padding,
+                    # we need to record the total size of the group
+                    if self._total_emds is None:
+                        self._total_emds = len(grouped_swhids)
+                    else:
+                        raise ValueError(
+                            "RawExtrinsingMetdata objects must all be added in one batch"
+                        )
+                    chunk_size = 20
+                case ExtendedObjectType.CONTENT:
+                    # Content can be slower as we need to retrieve from the objstorage,
+                    # so let’s update progress more often.
+                    chunk_size = 10
+                case _:
+                    chunk_size = 50
+
+            bar: ProgressBar[int]
+            with progressbar(
+                length=len(grouped_swhids),
+                label=f"Backing up {first_swhid.object_type.name.capitalize()} objects…",
+            ) as bar:
+                yield [first_swhid]
+                bar.update(n_steps=1)
+                for chunk_it in grouper(swhids_it, chunk_size):
+                    chunk = list(chunk_it)
+                    yield chunk
+                    bar.update(n_steps=len(chunk))
+
         handlers: Dict[
             ExtendedObjectType,
             Callable[[List[ExtendedSWHID]], Iterable[BaseModel]],
@@ -1178,9 +1233,10 @@ class RecoveryBundleCreator:
             ExtendedObjectType.ORIGIN: self._add_origins,
             ExtendedObjectType.RAW_EXTRINSIC_METADATA: self._add_raw_extrinsic_metadata,
         }
-        count = 0
         for obj in iter_swhids_grouped_by_type(
-            swhids, handlers=handlers, collector=list
+            swhids,
+            handlers=handlers,
+            chunker=chunker,
         ):
             self._registration_callback(obj)
             if hasattr(obj, "swhid"):
@@ -1188,5 +1244,3 @@ class RecoveryBundleCreator:
                 self._swhids.append(
                     swhid.to_extended() if hasattr(swhid, "to_extended") else swhid
                 )
-            count += 1
-        return count

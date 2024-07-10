@@ -630,18 +630,18 @@ def test_create_recovery_bundle(
     with ZipFile(bundle_path, "r") as bundle:
         # Do we have the expected files?
         assert bundle.namelist() == [
-            "contents/swh_1_cnt_d81cc0710eb6cf9efd5b920a8453e1e07157b6cd.age",
-            "contents/swh_1_cnt_c932c7649c6dfa4b82327d121215116909eb3bea.age",
             "skipped_contents/swh_1_cnt_33e45d56f88993aae6a0198013efa80716fd8920_1.age",
-            "directories/swh_1_dir_5256e856a0a0898966d6ba14feb4388b8b82d302.age",
+            "contents/swh_1_cnt_c932c7649c6dfa4b82327d121215116909eb3bea.age",
+            "contents/swh_1_cnt_d81cc0710eb6cf9efd5b920a8453e1e07157b6cd.age",
             "directories/swh_1_dir_4b825dc642cb6eb9a060e54bf8d69288fbee4904.age",
+            "directories/swh_1_dir_5256e856a0a0898966d6ba14feb4388b8b82d302.age",
             "directories/swh_1_dir_afa0105cfcaa14fdbacee344e96659170bb1bda5.age",
             "extids/fa730cf0bb415e1e921e430984bdcddd9c8eea4a.age",
             "revisions/swh_1_rev_01a7114f36fddd5ef2511b2cadda237a68adbb12.age",
-            "revisions/swh_1_rev_a646dd94c912829659b22a1e7e143d2fa5ebde1b.age",
             "extids/486e20ccedc221075b12abbb607a888875db41f6.age",
-            "releases/swh_1_rel_f7f222093a18ec60d781070abec4a630c850b837.age",
+            "revisions/swh_1_rev_a646dd94c912829659b22a1e7e143d2fa5ebde1b.age",
             "releases/swh_1_rel_db81a26783a3f4a9db07b4759ffc37621f159bb2.age",
+            "releases/swh_1_rel_f7f222093a18ec60d781070abec4a630c850b837.age",
             "snapshots/swh_1_snp_9b922e6d8d5b803c1582aabe5525b7b91150788e.age",
             "snapshots/swh_1_snp_db99fda25b43dc5cd90625ee4b0744751799c917.age",
             "origins/swh_1_ori_33abd4b4c5db79c7387673f71302750fd73e0645.age",
@@ -681,18 +681,18 @@ def test_create_recovery_bundle(
         assert content.data == b"42\n"
         # Have we registered all saved objects?
         assert unique_keys_found == [
-            bytes.fromhex("d81cc0710eb6cf9efd5b920a8453e1e07157b6cd"),
-            bytes.fromhex("c932c7649c6dfa4b82327d121215116909eb3bea"),
             bytes.fromhex("33e45d56f88993aae6a0198013efa80716fd8920"),
-            bytes.fromhex("5256e856a0a0898966d6ba14feb4388b8b82d302"),
+            bytes.fromhex("c932c7649c6dfa4b82327d121215116909eb3bea"),
+            bytes.fromhex("d81cc0710eb6cf9efd5b920a8453e1e07157b6cd"),
             bytes.fromhex("4b825dc642cb6eb9a060e54bf8d69288fbee4904"),
+            bytes.fromhex("5256e856a0a0898966d6ba14feb4388b8b82d302"),
             bytes.fromhex("afa0105cfcaa14fdbacee344e96659170bb1bda5"),
             bytes.fromhex("fa730cf0bb415e1e921e430984bdcddd9c8eea4a"),
             bytes.fromhex("01a7114f36fddd5ef2511b2cadda237a68adbb12"),
-            bytes.fromhex("a646dd94c912829659b22a1e7e143d2fa5ebde1b"),
             bytes.fromhex("486e20ccedc221075b12abbb607a888875db41f6"),
-            bytes.fromhex("f7f222093a18ec60d781070abec4a630c850b837"),
+            bytes.fromhex("a646dd94c912829659b22a1e7e143d2fa5ebde1b"),
             bytes.fromhex("db81a26783a3f4a9db07b4759ffc37621f159bb2"),
+            bytes.fromhex("f7f222093a18ec60d781070abec4a630c850b837"),
             bytes.fromhex("9b922e6d8d5b803c1582aabe5525b7b91150788e"),
             bytes.fromhex("db99fda25b43dc5cd90625ee4b0744751799c917"),
             bytes.fromhex("33abd4b4c5db79c7387673f71302750fd73e0645"),
@@ -796,6 +796,36 @@ def test_create_recovery_bundle_with_optional_fields(
         assert manifest.expire.isoformat(
             timespec="seconds"
         ) == expiration_date.isoformat(timespec="seconds")
+
+
+def test_create_recovery_bundle_refuses_multiple_backup_call_with_emd(
+    tmp_path, sample_populated_storage, encrypted_shares_for_object_private_key
+):
+    bundle_path = tmp_path / "test.swh-recovery-bundle"
+    swhids = [
+        ExtendedSWHID.from_string(s)
+        for s in (
+            # RawExtrinsicMetadata
+            "swh:1:emd:101d70c3574c1e4b730d7ba8e83a4bdadc8691cb",
+            "swh:1:emd:ef3b0865c7a05f79772a3189ddfc8515ec3e1844",
+        )
+    ]
+    with RecoveryBundleCreator(
+        path=bundle_path,
+        storage=sample_populated_storage,
+        removal_identifier="test_bundle",
+        requested=[
+            Origin("https://github.com/user1/repo1"),
+        ],
+        referencing=[],
+        object_public_key=OBJECT_PUBLIC_KEY,
+        decryption_key_shares=encrypted_shares_for_object_private_key,
+    ) as creator:
+        # We add a first batch of 1 RawExtrinsincMetadata object
+        creator.backup_swhids([swhids[0]])
+        # Trying to add a second batch must fail
+        with pytest.raises(ValueError, match="RawExtrinsingMetdata objects"):
+            creator.backup_swhids([swhids[1]])
 
 
 def test_recovery_bundle_decryption_key_provider_is_optional(
