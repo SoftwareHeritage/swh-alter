@@ -4,6 +4,7 @@
 # See top-level LICENSE file for more information
 
 from datetime import datetime, timedelta, timezone
+import itertools
 import logging
 import shutil
 import subprocess
@@ -309,6 +310,73 @@ def test_remover_remove_from_objstorages(
     remover.remove()
     for objstorage in (objstorage1, objstorage2):
         objstorage.delete.assert_called_once()
+
+
+def test_remover_remove_from_flaping_objstorages(
+    mocker,
+    sample_populated_storage,
+):
+    from swh.objstorage.interface import objid_from_dict
+
+    storage = sample_populated_storage
+    mocker.patch("swh.alter.operations.time.sleep")
+    objstorage = mocker.Mock(spec=ObjStorageInterface)
+    objstorage.delete.side_effect = itertools.cycle([Exception(), Exception(), None])
+    graph_client = mocker.MagicMock()
+    remover = Remover(
+        storage,
+        graph_client,
+        removal_objstorages={"flaping": objstorage},
+    )
+    remover.swhids_to_remove = [
+        ExtendedSWHID.from_string("swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165"),
+    ]
+    contents = storage.content_get(
+        [bytes.fromhex("0000000000000000000000000000000000000014")], algo="sha1_git"
+    )
+    remover.objids_to_remove = [
+        objid_from_dict(content.to_dict()) for content in contents
+    ]
+    remover.remove()
+    assert len(objstorage.delete.call_args_list) == 3
+
+
+def test_remover_remove_from_faulty_objstorages(
+    mocker,
+    caplog,
+    sample_populated_storage,
+):
+    from swh.objstorage.interface import objid_from_dict
+
+    storage = sample_populated_storage
+    mocker.patch("swh.alter.operations.time.sleep")
+    objstorage = mocker.Mock(spec=ObjStorageInterface)
+    objstorage.delete.side_effect = Exception("error")
+    graph_client = mocker.MagicMock()
+    remover = Remover(
+        storage,
+        graph_client,
+        removal_objstorages={
+            "faulty": objstorage,
+        },
+    )
+    remover.swhids_to_remove = [
+        ExtendedSWHID.from_string("swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165"),
+    ]
+    contents = storage.content_get(
+        [bytes.fromhex("0000000000000000000000000000000000000014")], algo="sha1_git"
+    )
+    remover.objids_to_remove = [
+        objid_from_dict(content.to_dict()) for content in contents
+    ]
+    with caplog.at_level(logging.WARNING):
+        with pytest.raises(Exception, match="error"):
+            remover.remove()
+    assert len(objstorage.delete.call_args_list) == 3
+    assert (
+        "objstorage “faulty” raised “Exception('error')” during attempt 2, "
+        "retrying in 10 seconds…" in caplog.text
+    )
 
 
 def test_remover_remove_from_objstorages_object_missing_from_one_objstorage(

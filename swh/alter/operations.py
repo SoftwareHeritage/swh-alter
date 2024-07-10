@@ -22,6 +22,7 @@ from swh.journal.writer.kafka import KafkaJournalWriter
 from swh.model.model import BaseModel, Content, KeyType, Origin
 from swh.model.swhids import CoreSWHID, ExtendedObjectType, ExtendedSWHID
 from swh.model.swhids import ObjectType as CoreSWHIDObjectType
+from swh.objstorage.exc import Error as ObjstorageError
 from swh.objstorage.exc import ObjNotFoundError
 from swh.objstorage.interface import (
     CompositeObjId,
@@ -44,6 +45,9 @@ from .removable import mark_removable
 from .utils import get_filtered_objects
 
 logger = logging.getLogger(__name__)
+
+
+OBJSTORAGE_DELETE_MAX_ATTEMPTS = 3
 
 
 class RemoverError(Exception):
@@ -425,21 +429,42 @@ class Remover:
             self.objids_to_remove, label=f"Removing objects from objstorage “{name}”…"
         ) as bar:
             for objid in bar:
-                try:
-                    start = time.monotonic()
-                    objstorage.delete(objid)
-                    durations.append(time.monotonic() - start)
-                    count += 1
-                except ObjNotFoundError:
-                    # hex form is nicer to read
-                    objid_hex = {k: cast(bytes, v).hex() for k, v in objid.items()}
-                    # convert to a frozenset of tuples as dicts are not hashable
-                    not_found.add(frozenset(objid_hex.items()))
-                    logger.debug(
-                        "%s not found in objstorage “%s” for deletion",
-                        objid_hex,
-                        name,
-                    )
+                attempt = 1
+                while True:
+                    try:
+                        start = time.monotonic()
+                        objstorage.delete(objid)
+                        durations.append(time.monotonic() - start)
+                        count += 1
+                        break
+                    except ObjNotFoundError:
+                        # hex form is nicer to read
+                        objid_hex = {k: cast(bytes, v).hex() for k, v in objid.items()}
+                        # convert to a frozenset of tuples as dicts are not hashable
+                        not_found.add(frozenset(objid_hex.items()))
+                        logger.debug(
+                            "%s not found in objstorage “%s” for deletion",
+                            objid_hex,
+                            name,
+                        )
+                        break
+                    except ObjstorageError as e:
+                        raise e
+                    except Exception as e:
+                        if attempt >= OBJSTORAGE_DELETE_MAX_ATTEMPTS:
+                            raise e
+                        else:
+                            cooldown = 5 * attempt
+                            logger.warning(
+                                "objstorage “%s” raised “%r” during attempt %d, "
+                                "retrying in %d seconds…",
+                                name,
+                                e,
+                                attempt,
+                                cooldown,
+                            )
+                            time.sleep(cooldown)
+                    attempt += 1
         stats = (
             (
                 f" Total time: {format_duration(sum(durations))},"
