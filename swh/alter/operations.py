@@ -468,13 +468,13 @@ class Remover:
         stats = (
             (
                 f" Total time: {format_duration(sum(durations))},"
-                f" average: {format_duration(statistics.mean(durations))} per object,"
+                f" average: {format_duration(statistics.mean(durations))} per object"
             )
             if len(durations) > 0
             else ""
         )
         stdev = (
-            f" standard deviation: {format_duration(statistics.stdev(durations))}"
+            f", standard deviation: {format_duration(statistics.stdev(durations))}"
             if len(durations) >= 2
             else ""
         )
