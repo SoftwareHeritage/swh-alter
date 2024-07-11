@@ -398,7 +398,7 @@ def remove(
 
     from swh.model.model import Origin
 
-    from .inventory import OriginNotFound, StuckInventoryException
+    from .inventory import RootsNotFound, StuckInventoryException
     from .operations import RemoverError
     from .recovery_bundle import ContentDataNotFound, SecretSharing
 
@@ -459,13 +459,15 @@ def remove(
     except RemoverError as e:
         click.secho(e.args[0], err=True, fg="red")
         ctx.exit(1)
-    except OriginNotFound as e:
+    except RootsNotFound as e:
         click.secho(
-            f"Origin “{e.get_label(requested)}” not found.",
+            "Some requested objects were not found:",
             err=True,
             fg="red",
             bold=True,
         )
+        for label in e.get_labels(requested):
+            click.secho(f"- {label}", err=True)
         ctx.exit(1)
     except StuckInventoryException as e:
         click.secho(
@@ -538,7 +540,7 @@ def list_candidates(
     from swh.storage import get_storage
 
     from .inventory import (
-        OriginNotFound,
+        RootsNotFound,
         StuckInventoryException,
         get_raw_extrinsic_metadata,
         make_inventory,
@@ -569,13 +571,15 @@ def list_candidates(
         )
         click.secho("\n".join(f"- {swhid}" for swhid in e.swhids), err=True, fg="red")
         ctx.exit(1)
-    except OriginNotFound as e:
+    except RootsNotFound as e:
         click.secho(
-            f"Origin “{e.get_label(requested)}” not found.",
+            "Some requested objects were not found:",
             err=True,
             fg="red",
             bold=True,
         )
+        for label in e.get_labels(requested):
+            click.secho(f"- {label}", err=True)
         ctx.exit(1)
     if omit_referenced:
         subgraph = mark_removable(

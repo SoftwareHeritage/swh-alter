@@ -29,7 +29,7 @@ from ..cli import (
     resume_removal,
     rollover,
 )
-from ..inventory import OriginNotFound, StuckInventoryException
+from ..inventory import RootsNotFound, StuckInventoryException
 from ..operations import Removable, Remover
 from ..recovery_bundle import AgeSecretKey, ContentDataNotFound, age_decrypt
 from .conftest import (
@@ -379,15 +379,17 @@ def test_cli_remove_errors_when_inventory_is_stuck(
     assert "swh:1:ori:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" in result.stderr
 
 
-def test_cli_remove_errors_when_origin_is_not_found(
+def test_cli_remove_errors_when_roots_not_found(
     mocker, mocked_external_resources, remove_config
 ):
     mocker.patch.object(
         Remover,
         "get_removable",
-        side_effect=OriginNotFound(
-            ExtendedSWHID.from_string(
-                "swh:1:ori:83404f995118bd25774f4ac14422a8f175e7a054"
+        side_effect=RootsNotFound(
+            ExtendedSWHID.from_string(s)
+            for s in (
+                "swh:1:ori:83404f995118bd25774f4ac14422a8f175e7a054",
+                "swh:1:snp:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             )
         ),
     )
@@ -402,12 +404,15 @@ def test_cli_remove_errors_when_origin_is_not_found(
             "--dry-run=stop-before-recovery-bundle",
             "https://example.com/swh/graph",
             "swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165",
+            "swh:1:snp:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         ],
         obj={"config": remove_config},
         catch_exceptions=False,
     )
     assert result.exit_code == 1, result.output
-    assert "Origin “https://example.com/swh/graph” not found" in result.stderr
+    assert "Some requested objects were not found" in result.stderr
+    assert "- https://example.com/swh/graph" in result.stderr
+    assert "- swh:1:snp:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" in result.stderr
 
 
 def test_cli_remove_origin_conversions(
@@ -969,23 +974,27 @@ def test_cli_list_candidates_origin_not_found(
     runner = CliRunner(mix_stderr=False)
     mocker.patch(
         "swh.alter.inventory.make_inventory",
-        side_effect=OriginNotFound(
-            ExtendedSWHID.from_string(
-                "swh:1:ori:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        side_effect=RootsNotFound(
+            ExtendedSWHID.from_string(s)
+            for s in (
+                "swh:1:ori:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "swh:1:ori:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
             )
         ),
     )
     result = runner.invoke(
         list_candidates,
-        ["swh:1:ori:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
+        [
+            "swh:1:ori:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "swh:1:ori:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        ],
         obj={"config": remove_config},
         catch_exceptions=False,
     )
     assert result.exit_code == 1
-    assert (
-        "Origin “swh:1:ori:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa” not found"
-        in result.stderr
-    )
+    assert "Some requested objects were not found" in result.stderr
+    assert "- swh:1:ori:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" in result.stderr
+    assert "- swh:1:ori:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" in result.stderr
 
 
 def test_cli_recovery_bundle_resume_removal_restores_bundle_when_remove_fails(

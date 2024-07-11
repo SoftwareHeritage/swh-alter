@@ -16,6 +16,7 @@ from typing import (
     Callable,
     Collection,
     Dict,
+    Iterable,
     Iterator,
     List,
     NamedTuple,
@@ -37,26 +38,30 @@ from swh.storage.interface import StorageInterface
 
 from .progressbar import ProgressBar, ProgressBarInit, no_progressbar
 from .subgraph import Subgraph
+from .utils import filter_objects_missing_from_storage
 
 logger = logging.getLogger(__name__)
 
 
-class OriginNotFound(Exception):
-    def __init__(self, swhid: ExtendedSWHID):
-        self.swhid = swhid
+class RootsNotFound(Exception):
+    def __init__(self, swhids: Iterable[ExtendedSWHID]):
+        self.swhids = list(sorted(swhids))
 
-    def get_label(self, requested: Collection[Origin | ExtendedSWHID]) -> str:
-        """Returns either an origin URL if it can be found in requested and the
+    def get_labels(self, requested: Collection[Origin | ExtendedSWHID]) -> List[str]:
+        """Returns a list of either an origin URL if it can be found in requested and the
         SWHID otherwise."""
 
-        return next(
-            (
-                x.url
-                for x in requested
-                if isinstance(x, Origin) and x.swhid() == self.swhid
-            ),
-            str(self.swhid),
-        )
+        return [
+            next(
+                (
+                    x.url
+                    for x in requested
+                    if isinstance(x, Origin) and x.swhid() == swhid
+                ),
+                str(swhid),
+            )
+            for swhid in self.swhids
+        ]
 
 
 class StuckInventoryException(Exception):
@@ -394,7 +399,7 @@ class Lister:
         v_source = self._subgraph.add_swhid(source, complete=True)
         [origin_d] = self._storage.origin_get_by_sha1([source.object_id])
         if not origin_d:
-            raise OriginNotFound(source)
+            raise ValueError(f"Origin “{source}” not found in storage")
         for visit in iter_origin_visits(self._storage, origin_d["url"]):
             assert visit.visit is not None  # make mypy happy
             for status in iter_origin_visit_statuses(
@@ -430,6 +435,19 @@ class ProgressBarItem(NamedTuple):
         )
 
 
+def _ensure_swhids_exist_in_storage(
+    storage: StorageInterface, swhids: List[ExtendedSWHID]
+) -> None:
+    """Raise RootsNotFound if any of the given swhids cannot be found
+    in the given storage."""
+
+    wanted_swhids = set(swhids)
+    existing_swhids = set(filter_objects_missing_from_storage(storage, wanted_swhids))
+    diff = wanted_swhids - existing_swhids
+    if diff:
+        raise RootsNotFound(diff)
+
+
 def make_inventory(
     storage,
     graph_client,
@@ -444,6 +462,8 @@ def make_inventory(
     The result should then used to verify which candidate can safely be
     removed.
     """
+
+    _ensure_swhids_exist_in_storage(storage, swhids)
 
     subgraph = InventorySubgraph()
     known_missing = known_missing or set()
