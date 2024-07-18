@@ -472,7 +472,7 @@ def remove(
     except StuckInventoryException as e:
         click.secho(
             "Inventory phase got stuck. "
-            "Unable to learn the complete set of what these objects reference:\n",
+            "Unable to learn the complete set of what these objects reference:",
             err=True,
             fg="red",
             bold=True,
@@ -564,7 +564,7 @@ def list_candidates(
     except StuckInventoryException as e:
         click.secho(
             "Inventory phase got stuck. "
-            "Unable to learn the complete set of what these objects reference:\n",
+            "Unable to learn the complete set of what these objects reference:",
             err=True,
             fg="red",
             bold=True,
