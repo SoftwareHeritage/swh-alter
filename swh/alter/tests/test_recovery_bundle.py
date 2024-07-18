@@ -543,28 +543,10 @@ def encrypted_shares_for_object_private_key(
     )
 
 
-@pytest.fixture
-def sample_populated_storage(swh_storage, sample_data):
-    swh_storage.content_add(sample_data.contents)
-    swh_storage.skipped_content_add(sample_data.skipped_contents)
-    swh_storage.directory_add(sample_data.directories)
-    swh_storage.revision_add(sample_data.revisions)
-    swh_storage.release_add(sample_data.releases)
-    swh_storage.snapshot_add(sample_data.snapshots)
-    swh_storage.origin_add(sample_data.origins)
-    swh_storage.origin_visit_add(sample_data.origin_visits)
-    swh_storage.origin_visit_status_add(sample_data.origin_visit_statuses)
-    swh_storage.metadata_authority_add(sample_data.authorities)
-    swh_storage.metadata_fetcher_add(sample_data.fetchers)
-    swh_storage.raw_extrinsic_metadata_add(sample_data.content_metadata)
-    swh_storage.raw_extrinsic_metadata_add(sample_data.origin_metadata)
-    swh_storage.extid_add(sample_data.extids)
-    swh_storage.flush()
-    return swh_storage
-
-
 def test_create_recovery_bundle(
-    tmp_path, sample_populated_storage, encrypted_shares_for_object_private_key
+    tmp_path,
+    sample_populated_storage_with_matching_hash,
+    encrypted_shares_for_object_private_key,
 ):
     bundle_path = tmp_path / "test.swh-recovery-bundle"
     swhids = [
@@ -606,7 +588,7 @@ def test_create_recovery_bundle(
 
     with RecoveryBundleCreator(
         path=bundle_path,
-        storage=sample_populated_storage,
+        storage=sample_populated_storage_with_matching_hash,
         removal_identifier="test_bundle",
         requested=[
             Origin("https://github.com/user1/repo1"),
@@ -734,13 +716,15 @@ def test_create_recovery_bundle(
 
 
 def test_create_recovery_bundle_fails_if_empty(
-    tmp_path, sample_populated_storage, encrypted_shares_for_object_private_key
+    tmp_path,
+    sample_populated_storage_with_matching_hash,
+    encrypted_shares_for_object_private_key,
 ):
     bundle_path = tmp_path / "test.swh-recovery-bundle"
     with pytest.raises(ValueError):
         with RecoveryBundleCreator(
             path=bundle_path,
-            storage=sample_populated_storage,
+            storage=sample_populated_storage_with_matching_hash,
             removal_identifier="test_bundle",
             requested=[Origin("https://github.com/user1/repo1")],
             referencing=[],
@@ -752,14 +736,14 @@ def test_create_recovery_bundle_fails_if_empty(
 
 
 def test_create_recovery_bundle_fails_without_decryption_key_shares(
-    tmp_path, sample_populated_storage
+    tmp_path, sample_populated_storage_with_matching_hash
 ):
     bundle_path = tmp_path / "test.swh-recovery-bundle"
     swhids = ["swh:1:ori:33abd4b4c5db79c7387673f71302750fd73e0645"]
     with pytest.raises(ValueError):
         with RecoveryBundleCreator(
             path=bundle_path,
-            storage=sample_populated_storage,
+            storage=sample_populated_storage_with_matching_hash,
             removal_identifier="test_bundle",
             requested=[Origin("https://github.com/user1/repo1")],
             referencing=[],
@@ -770,7 +754,9 @@ def test_create_recovery_bundle_fails_without_decryption_key_shares(
 
 
 def test_create_recovery_bundle_with_optional_fields(
-    tmp_path, sample_populated_storage, encrypted_shares_for_object_private_key
+    tmp_path,
+    sample_populated_storage_with_matching_hash,
+    encrypted_shares_for_object_private_key,
 ):
     bundle_path = tmp_path / "test.swh-recovery-bundle"
     swhids = ["swh:1:ori:33abd4b4c5db79c7387673f71302750fd73e0645"]
@@ -779,7 +765,7 @@ def test_create_recovery_bundle_with_optional_fields(
     )
     with RecoveryBundleCreator(
         path=bundle_path,
-        storage=sample_populated_storage,
+        storage=sample_populated_storage_with_matching_hash,
         removal_identifier="test_bundle",
         requested=[Origin("https://github.com/user1/repo1")],
         referencing=[],
@@ -801,7 +787,9 @@ def test_create_recovery_bundle_with_optional_fields(
 
 
 def test_create_recovery_bundle_refuses_multiple_backup_call_with_emd(
-    tmp_path, sample_populated_storage, encrypted_shares_for_object_private_key
+    tmp_path,
+    sample_populated_storage_with_matching_hash,
+    encrypted_shares_for_object_private_key,
 ):
     bundle_path = tmp_path / "test.swh-recovery-bundle"
     swhids = [
@@ -814,7 +802,7 @@ def test_create_recovery_bundle_refuses_multiple_backup_call_with_emd(
     ]
     with RecoveryBundleCreator(
         path=bundle_path,
-        storage=sample_populated_storage,
+        storage=sample_populated_storage_with_matching_hash,
         removal_identifier="test_bundle",
         requested=[
             Origin("https://github.com/user1/repo1"),
@@ -831,7 +819,10 @@ def test_create_recovery_bundle_refuses_multiple_backup_call_with_emd(
 
 
 def test_create_recovery_bundle_when_content_data_not_found(
-    mocker, tmp_path, sample_populated_storage, encrypted_shares_for_object_private_key
+    mocker,
+    tmp_path,
+    sample_populated_storage_with_matching_hash,
+    encrypted_shares_for_object_private_key,
 ):
     bundle_path = tmp_path / "test.swh-recovery-bundle"
     swhids = [
@@ -843,11 +834,15 @@ def test_create_recovery_bundle_when_content_data_not_found(
         )
     ]
     # None means data for the given hashes have not been found
-    mocker.patch.object(sample_populated_storage, "content_get_data", return_value=None)
+    mocker.patch.object(
+        sample_populated_storage_with_matching_hash,
+        "content_get_data",
+        return_value=None,
+    )
     with pytest.raises(ContentDataNotFound):
         with RecoveryBundleCreator(
             path=bundle_path,
-            storage=sample_populated_storage,
+            storage=sample_populated_storage_with_matching_hash,
             removal_identifier="test_bundle",
             requested=[
                 Origin("https://github.com/user1/repo1"),
@@ -863,7 +858,7 @@ def test_create_recovery_bundle_when_content_data_not_found_warns(
     mocker,
     caplog,
     tmp_path,
-    sample_populated_storage,
+    sample_populated_storage_with_matching_hash,
     encrypted_shares_for_object_private_key,
 ):
     bundle_path = tmp_path / "test.swh-recovery-bundle"
@@ -876,11 +871,15 @@ def test_create_recovery_bundle_when_content_data_not_found_warns(
         )
     ]
     # None means data for the given hashes have not been found
-    mocker.patch.object(sample_populated_storage, "content_get_data", return_value=None)
+    mocker.patch.object(
+        sample_populated_storage_with_matching_hash,
+        "content_get_data",
+        return_value=None,
+    )
     with caplog.at_level(logging.WARNING):
         with RecoveryBundleCreator(
             path=bundle_path,
-            storage=sample_populated_storage,
+            storage=sample_populated_storage_with_matching_hash,
             removal_identifier="test_bundle",
             requested=[
                 Origin("https://github.com/user1/repo1"),

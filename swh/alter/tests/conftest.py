@@ -479,6 +479,56 @@ def sample_populated_storage(
 
 
 @pytest.fixture
+def sample_populated_storage_with_matching_hash(swh_storage, sample_data):
+    swh_storage.content_add(sample_data.contents)
+    swh_storage.skipped_content_add(sample_data.skipped_contents)
+    swh_storage.directory_add(sample_data.directories)
+    swh_storage.revision_add(sample_data.revisions)
+    swh_storage.release_add(sample_data.releases)
+    swh_storage.snapshot_add(sample_data.snapshots)
+    result = swh_storage.flush()
+    assert result == {
+        "content:add": 3,
+        "content:add:bytes": 15,
+        "skipped_content:add": 2,
+        "directory:add": 7,
+        "revision:add": 8,
+        "release:add": 3,
+        "snapshot:add": 3,
+        "object_reference:add": 37,
+    }
+    result = swh_storage.origin_add(sample_data.origins)
+    assert result == {
+        "origin:add": 7,
+    }
+    result = swh_storage.origin_visit_add(sample_data.origin_visits)
+    assert len(result) == 3
+    result = swh_storage.origin_visit_status_add(sample_data.origin_visit_statuses)
+    assert result == {
+        "object_reference:add": 0,
+        "origin_visit_status:add": 3,
+    }
+    result = swh_storage.metadata_authority_add(sample_data.authorities)
+    assert result == {
+        "metadata_authority:add": 2,
+    }
+    result = swh_storage.metadata_fetcher_add(sample_data.fetchers)
+    assert result == {
+        "metadata_fetcher:add": 2,
+    }
+    swh_storage.raw_extrinsic_metadata_add(sample_data.content_metadata)
+    swh_storage.raw_extrinsic_metadata_add(sample_data.origin_metadata)
+    swh_storage.extid_add(sample_data.extids)
+    result = swh_storage.flush()
+    assert result == {
+        "cnt_metadata:add": 3,
+        "ori_metadata:add": 3,
+        "extid:add": 4,
+    }
+    return swh_storage
+
+
+@pytest.fixture
 def storage_with_forked_origin_removed(sample_populated_storage):
     removed_swhids = [
         "swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165",
