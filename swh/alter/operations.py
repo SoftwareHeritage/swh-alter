@@ -159,9 +159,9 @@ class Remover:
         self.swhids_to_remove: List[ExtendedSWHID] = []
         self.objids_to_remove: List[CompositeObjId] = []
         self.origin_urls_to_remove: List[str] = []
-        self.journal_objects_to_remove: Dict[
-            str, List[KeyType]
-        ] = collections.defaultdict(list)
+        self.journal_objects_to_remove: Dict[str, List[KeyType]] = (
+            collections.defaultdict(list)
+        )
         self.progressbar: ProgressBarInit = (
             progressbar if progressbar is not None else no_progressbar
         )

@@ -227,9 +227,9 @@ class MirrorNotificationWatcher:
                 for obj in notification.removed_objects
                 if obj.object_type == object_type
             ]
-            breakdown[
-                object_type.name.lower()
-            ] = f"{object_type.name.lower().replace('_', ' ')}: {len(objs)}"
+            breakdown[object_type.name.lower()] = (
+                f"{object_type.name.lower().replace('_', ' ')}: {len(objs)}"
+            )
         return REMOVAL_NOTIFICATION_RECEIVED_EMAIL_BODY.format(
             removal_identifier=notification.removal_identifier,
             object_count=len(notification.removed_objects),

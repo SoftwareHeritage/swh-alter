@@ -26,9 +26,11 @@ class RemovalNotification:
             "removal_identifier": self.removal_identifier,
             "reason": self.reason,
             "requested": [
-                str(swhid_or_origin)
-                if isinstance(swhid_or_origin, ExtendedSWHID)
-                else swhid_or_origin.url
+                (
+                    str(swhid_or_origin)
+                    if isinstance(swhid_or_origin, ExtendedSWHID)
+                    else swhid_or_origin.url
+                )
                 for swhid_or_origin in self.requested
             ],
             "removed_objects": [str(swhid) for swhid in self.removed_objects],
@@ -40,9 +42,11 @@ class RemovalNotification:
             **{
                 **d,
                 "requested": [
-                    ExtendedSWHID.from_string(s)
-                    if s.startswith("swh:1:")
-                    else Origin(url=s)
+                    (
+                        ExtendedSWHID.from_string(s)
+                        if s.startswith("swh:1:")
+                        else Origin(url=s)
+                    )
                     for s in d["requested"]
                 ],
                 "removed_objects": [

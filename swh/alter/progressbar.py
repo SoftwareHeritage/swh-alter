@@ -24,25 +24,20 @@ logger = logging.getLogger(__name__)
 class ProgressBar(Protocol, Generic[V]):
     """Interface for the ProgressBar object, mimicking click’s."""
 
-    def __enter__(self) -> "ProgressBar[V]":
-        ...
+    def __enter__(self) -> "ProgressBar[V]": ...
 
     def __exit__(
         self,
         exc_type: Optional[type[BaseException]],
         exc_value: Optional[BaseException],
         tb: Optional[TracebackType],
-    ) -> None:
-        ...
+    ) -> None: ...
 
-    def __iter__(self) -> Iterator[V]:
-        ...
+    def __iter__(self) -> Iterator[V]: ...
 
-    def __next__(self) -> V:
-        ...
+    def __next__(self) -> V: ...
 
-    def update(self, n_steps: int, current_item: Optional[V] = None) -> None:
-        ...
+    def update(self, n_steps: int, current_item: Optional[V] = None) -> None: ...
 
 
 class NoProgressBar(Generic[V]):
@@ -89,8 +84,7 @@ class ProgressBarInit(Protocol):
         show_pos: bool = False,
         show_percent: Optional[bool] = None,
         item_show_func: Optional[Callable[[V], str]] = None,
-    ) -> ProgressBar[V]:
-        ...
+    ) -> ProgressBar[V]: ...
 
 
 def no_progressbar(

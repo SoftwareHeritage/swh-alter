@@ -540,13 +540,15 @@ def test_remover_have_new_references_outside_removed(
     mocker.patch.object(
         storage,
         "object_find_recent_references",
-        wraps=lambda s, _: [
-            ExtendedSWHID.from_string(
-                "swh:1:rev:0000000000000000000000000000000000000003"
-            )
-        ]
-        if s.object_type == ExtendedObjectType.DIRECTORY
-        else [],
+        wraps=lambda s, _: (
+            [
+                ExtendedSWHID.from_string(
+                    "swh:1:rev:0000000000000000000000000000000000000003"
+                )
+            ]
+            if s.object_type == ExtendedObjectType.DIRECTORY
+            else []
+        ),
     )
     result = remover.have_new_references(
         [ExtendedSWHID.from_string(swhid) for swhid in swhids]
@@ -573,13 +575,15 @@ def test_remover_have_new_references_inside_removed(
     mocker.patch.object(
         storage,
         "object_find_recent_references",
-        wraps=lambda s, _: [
-            ExtendedSWHID.from_string(
-                "swh:1:rev:0000000000000000000000000000000000000013"
-            )
-        ]
-        if s.object_type == ExtendedObjectType.DIRECTORY
-        else [],
+        wraps=lambda s, _: (
+            [
+                ExtendedSWHID.from_string(
+                    "swh:1:rev:0000000000000000000000000000000000000013"
+                )
+            ]
+            if s.object_type == ExtendedObjectType.DIRECTORY
+            else []
+        ),
     )
     result = remover.have_new_references(
         [ExtendedSWHID.from_string(swhid) for swhid in swhids]
@@ -632,13 +636,15 @@ def test_remover_have_new_references_missing_from_storage(
     mocker.patch.object(
         storage,
         "object_find_recent_references",
-        wraps=lambda s, _: [
-            ExtendedSWHID.from_string(
-                "swh:1:rev:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-            )
-        ]
-        if s.object_type == ExtendedObjectType.DIRECTORY
-        else [],
+        wraps=lambda s, _: (
+            [
+                ExtendedSWHID.from_string(
+                    "swh:1:rev:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                )
+            ]
+            if s.object_type == ExtendedObjectType.DIRECTORY
+            else []
+        ),
     )
     result = remover.have_new_references(
         [ExtendedSWHID.from_string(swhid) for swhid in swhids]
