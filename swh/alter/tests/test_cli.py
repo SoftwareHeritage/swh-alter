@@ -77,23 +77,6 @@ def isolate_loggers():
 
 
 @pytest.fixture
-def mocked_external_resources(
-    mocker,
-    graph_client_with_only_initial_origin,
-    sample_populated_storage,
-):
-    # mocker.patch.object(sample_populated_storage, "content_get")
-    mocker.patch(
-        "swh.storage.get_storage",
-        return_value=sample_populated_storage,
-    )
-    mocker.patch(
-        "swh.graph.http_client.RemoteGraphClient",
-        return_value=graph_client_with_only_initial_origin,
-    )
-
-
-@pytest.fixture
 def remove_config():
     config = dict(DEFAULT_CONFIG)
     config["restoration_storage"] = {
