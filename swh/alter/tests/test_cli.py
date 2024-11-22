@@ -693,7 +693,10 @@ def remover_for_bundle_creation(mocker):
 
 
 def test_cli_remove_create_bundle_no_extra_options(
-    remover_for_bundle_creation, remove_config, remove_input_proceed_with_removal
+    remover_for_bundle_creation,
+    remove_config,
+    remove_input_proceed_with_removal,
+    tmp_path,
 ):
     runner = CliRunner()
     runner.invoke(
@@ -702,7 +705,7 @@ def test_cli_remove_create_bundle_no_extra_options(
             "--identifier",
             "this-is-not-my-departement",
             "--recovery-bundle",
-            "test.swh-recovery-bundle",
+            tmp_path / "test.swh-recovery-bundle",
             "swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165",
         ],
         input=remove_input_proceed_with_removal,
@@ -712,11 +715,14 @@ def test_cli_remove_create_bundle_no_extra_options(
     remover_for_bundle_creation.create_recovery_bundle.assert_called_once()
     _, kwargs = remover_for_bundle_creation.create_recovery_bundle.call_args
     assert kwargs["removal_identifier"] == "this-is-not-my-departement"
-    assert kwargs["recovery_bundle_path"] == "test.swh-recovery-bundle"
+    assert kwargs["recovery_bundle_path"] == tmp_path / "test.swh-recovery-bundle"
 
 
 def test_cli_remove_create_bundle_with_options(
-    remover_for_bundle_creation, remove_config, remove_input_proceed_with_removal
+    remover_for_bundle_creation,
+    remove_config,
+    remove_input_proceed_with_removal,
+    tmp_path,
 ):
     expire = (datetime.now() + timedelta(days=365)).strftime("%Y-%m-%d")
     runner = CliRunner()
@@ -726,7 +732,7 @@ def test_cli_remove_create_bundle_with_options(
             "--identifier",
             "test",
             "--recovery-bundle",
-            "test.swh-recovery-bundle",
+            tmp_path / "test.swh-recovery-bundle",
             "--reason",
             "we are doing a test",
             "--expire",
@@ -740,7 +746,7 @@ def test_cli_remove_create_bundle_with_options(
     remover_for_bundle_creation.create_recovery_bundle.assert_called_once()
     _, kwargs = remover_for_bundle_creation.create_recovery_bundle.call_args
     assert kwargs["removal_identifier"] == "test"
-    assert kwargs["recovery_bundle_path"] == "test.swh-recovery-bundle"
+    assert kwargs["recovery_bundle_path"] == tmp_path / "test.swh-recovery-bundle"
     assert kwargs["reason"] == "we are doing a test"
     assert kwargs["expire"] == datetime.fromisoformat(expire).astimezone()
 
@@ -795,6 +801,7 @@ def test_cli_remove_restores_bundle_when_remove_fails(
     remover_for_bundle_creation,
     remove_config,
     remove_input_proceed_with_removal,
+    tmp_path,
 ):
     remover = remover_for_bundle_creation
 
@@ -812,7 +819,7 @@ def test_cli_remove_restores_bundle_when_remove_fails(
             "--identifier",
             "this-is-not-my-departement",
             "--recovery-bundle",
-            "test.swh-recovery-bundle",
+            tmp_path / "test.swh-recovery-bundle",
             "swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165",
         ],
         input=remove_input_proceed_with_removal,
