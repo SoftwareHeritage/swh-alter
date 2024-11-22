@@ -166,6 +166,13 @@ def alter_cli_group(ctx):
                 recipient_keys:
                     "YubiKey serial 3862152 slot 1": age1yubikeyrupnxsu6uneqxw146g9szaofyxexiy4nhnzqg1ayb9b85g8h4oardwj6c212
                     "Ruby": age1y6epp27nq8n4faj8g8hkw8thcvj744y5vnr8jyfmp4857d6npc3qn9k7jz
+        \b
+        journal_writer:
+          cls: kafka
+          brokers:
+          - kafka1.internal.softwareheritage.org
+          prefix: swh.journal
+          client_id: swh.alter.removals
 
     The identifier for the recipient key must be in the form of
     “YubiKey serial ####### slot #” if the secret key is stored
@@ -413,9 +420,11 @@ def remove(
 ) -> None:
     """Remove the given SWHIDs or URLs from the archive."""
 
+    from swh.journal.writer import JournalWriterInterface, get_journal_writer
     from swh.model.model import Origin
 
     from .inventory import RootsNotFound, StuckInventoryException
+    from .notifications import RemovalNotification
     from .operations import RemoverError
     from .recovery_bundle import ContentDataNotFound, SecretSharing
 
@@ -439,6 +448,11 @@ def remove(
     remover = get_remover(ctx, dry_run)
 
     swhids = [x.swhid() if isinstance(x, Origin) else x for x in requested]
+
+    journal_writer: Optional[JournalWriterInterface] = None
+    if "journal_writer" in ctx.obj["config"]:
+        cfg = ctx.obj["config"]["journal_writer"]
+        journal_writer = get_journal_writer(**cfg)
 
     try:
         removable = remover.get_removable(
@@ -522,6 +536,16 @@ def remove(
         click.secho("Rolling back…", fg="cyan")
         remover.restore_recovery_bundle()
         ctx.exit(1)
+    else:
+        if journal_writer is not None:
+            notif = RemovalNotification(
+                removal_identifier=identifier,
+                reason=reason,
+                requested=list(swhids),
+                removed_objects=remover.swhids_to_remove,
+            )
+            journal_writer.write_addition("removal_notification", notif)
+            journal_writer.flush()
 
 
 @alter_cli_group.command("list-candidates")
@@ -1133,12 +1157,19 @@ def resume_removal(
     decryption_key=None,
 ) -> None:
     """Resume a removal operation from a recovery bundle."""
+    from swh.journal.writer import JournalWriterInterface, get_journal_writer
+
+    from .notifications import RemovalNotification
     from .recovery_bundle import WrongDecryptionKey
 
     remover = get_remover(ctx)
+    journal_writer: Optional[JournalWriterInterface] = None
+    if "journal_writer" in ctx.obj["config"]:
+        cfg = ctx.obj["config"]["journal_writer"]
+        journal_writer = get_journal_writer(**cfg)
 
     try:
-        remover.register_objects_from_bundle(
+        bundle = remover.register_objects_from_bundle(
             recovery_bundle_path=recovery_bundle, object_secret_key=decryption_key
         )
     except WrongDecryptionKey:
@@ -1150,6 +1181,16 @@ def resume_removal(
         click.secho(str(e), err=True, fg="red", bold=True)
         remover.restore_recovery_bundle()
         ctx.exit(1)
+    else:
+        if journal_writer is not None:
+            notif = RemovalNotification(
+                removal_identifier=bundle.removal_identifier,
+                reason=bundle.reason or "",
+                requested=bundle.requested,
+                removed_objects=remover.swhids_to_remove,
+            )
+            journal_writer.write_addition("removal_notification", notif)
+            journal_writer.flush()
 
 
 def _strip_rage_report(output):

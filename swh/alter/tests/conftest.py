@@ -313,8 +313,8 @@ def fix_contents(contents: Iterator[Content]) -> Iterator[Content]:
                 "sha1_git": bytes.fromhex(f"{swhid_value:040x}"),
                 "sha256": bytes.fromhex(f"{swhid_value:064x}"),
                 "blake2s256": bytes.fromhex(f"{swhid_value:064x}"),
-                "data": b"",
-                "length": 0,
+                "data": bytes.fromhex(f"{swhid_value:02x}"),
+                "length": 1,
                 "ctime": datetime.datetime.now(tz=datetime.timezone.utc),
             }
         )
@@ -485,7 +485,7 @@ def sample_populated_storage(
     result = swh_storage.flush()
     assert result == {
         "content:add": 6,
-        "content:add:bytes": 0,
+        "content:add:bytes": 6,
         "directory:add": 6,
         "extid:add": 7,
         "release:add": 2,

@@ -239,7 +239,7 @@ class Remover:
 
     def register_objects_from_bundle(
         self, recovery_bundle_path: str, object_secret_key: AgeSecretKey
-    ):
+    ) -> RecoveryBundle:
         assert self.recovery_bundle_path is None
         assert self.object_secret_key is None
 
@@ -284,6 +284,7 @@ class Remover:
                 ):
                     self.register_object(obj)
                 bar.update(n_steps=1)
+        return bundle
 
     def create_recovery_bundle(
         self,
