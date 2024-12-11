@@ -197,7 +197,7 @@ class MirrorNotificationWatcher:
 
     def format_removal_email(self, notification) -> str:
         reason = textwrap.fill(
-            notification.reason,
+            notification.reason or "",
             width=68,
             initial_indent="    ",
             subsequent_indent="    ",

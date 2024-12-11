@@ -3,6 +3,7 @@
 # License: GNU General Public License version 3, or any later version
 # See top-level LICENSE file for more information
 
+import base64
 import logging
 import smtplib
 import textwrap
@@ -75,6 +76,28 @@ def test_process_removal_notification(
         "Removal from the main Software Heritage archive (example-removal-notification)"
         in smtpd.messages[0]["Subject"]
     )
+
+
+def test_process_removal_notification_no_reason(
+    smtpd,
+    example_watcher,
+    masking_admin,
+    example_removal_notification,
+):
+    example_removal_notification.reason = None
+    example_watcher.process_removal_notification(example_removal_notification)
+    assert len(smtpd.messages) == 1
+
+    msg = smtpd.messages[0]
+    assert (
+        "Removal from the main Software Heritage archive (example-removal-notification)"
+        in msg["Subject"]
+    )
+    body = base64.b64decode(msg.get_payload()).decode()
+    assert (
+        "removed from the main Software Heritage archive "
+        "for the following reason:\n\n\n\n"
+    ) in body
 
 
 def test_process_removal_notification_idempotency(
