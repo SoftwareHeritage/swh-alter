@@ -215,7 +215,11 @@ def read_swhids(file: TextIO) -> Set["ExtendedSWHID"]:
 
 
 def get_remover(
-    ctx: click.Context, dry_run: bool = False, require_masking_admin: bool = False
+    ctx: click.Context,
+    dry_run: bool = False,
+    require_masking_admin: bool = False,
+    require_search: bool = True,
+    require_journal: bool = True,
 ) -> "Remover":
     from psycopg2 import OperationalError, ProgrammingError
 
@@ -246,7 +250,9 @@ def get_remover(
             raise click.ClickException(
                 "Configuration does not define `restoration_storage`"
             )
-        if "removal_searches" not in conf or len(conf["removal_searches"]) == 0:
+        if require_search and (
+            "removal_searches" not in conf or len(conf["removal_searches"]) == 0
+        ):
             raise click.ClickException(
                 "Configuration does not define any `removal_searches`"
             )
@@ -258,7 +264,9 @@ def get_remover(
             raise click.ClickException(
                 "Configuration does not define any `removal_objstorages`"
             )
-        if "removal_journals" not in conf or len(conf["removal_journals"]) == 0:
+        if require_journal and (
+            "removal_journals" not in conf or len(conf["removal_journals"]) == 0
+        ):
             raise click.ClickException(
                 "Configuration does not define any `removal_journals`"
             )
@@ -395,6 +403,16 @@ def get_remover(
     default=False,
     help="Create recovery bundle even when data for Content object cannot be found",
 )
+@click.option(
+    "--require-journal/--no-require-journal",
+    default=True,
+    help="Check at least one 'removal_journals' has been defined in the config file",
+)
+@click.option(
+    "--require-search/--no-require-search",
+    default=True,
+    help="Check at least one 'removal_searches' has been defined in the config file",
+)
 @click.argument(
     "requested",
     metavar="<SWHID|URL>..",
@@ -417,6 +435,8 @@ def remove(
     known_missing_swhids,
     known_missing_file,
     allow_empty_content_objects,
+    require_journal,
+    require_search,
 ) -> None:
     """Remove the given SWHIDs or URLs from the archive."""
 
@@ -445,7 +465,9 @@ def remove(
         except PermissionError:
             raise click.ClickException(f"Permission denied: “{recovery_bundle}”")
 
-    remover = get_remover(ctx, dry_run)
+    remover = get_remover(
+        ctx, dry_run, require_journal=require_journal, require_search=require_search
+    )
 
     swhids = [x.swhid() if isinstance(x, Origin) else x for x in requested]
 
