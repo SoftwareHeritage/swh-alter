@@ -560,6 +560,7 @@ def remove(
         ctx.exit(1)
     else:
         if journal_writer is not None:
+            click.secho("Sending removal notification…", fg="cyan")
             notif = RemovalNotification(
                 removal_identifier=identifier,
                 reason=reason,
@@ -568,6 +569,7 @@ def remove(
             )
             journal_writer.write_addition("removal_notification", notif)
             journal_writer.flush()
+            click.secho("Removal notification sent.", fg="green")
 
 
 @alter_cli_group.command("list-candidates")
