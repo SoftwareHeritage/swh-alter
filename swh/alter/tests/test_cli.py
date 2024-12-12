@@ -2502,6 +2502,7 @@ def test_cli_handle_removal_notification_with_removal(
         recovery_bundle_path=str(recovery_bundle_path),
         ignore_requested=[],
         allow_empty_content_objects=False,
+        recompute_swhids_to_remove=False,
     )
 
 
@@ -2612,6 +2613,7 @@ def test_cli_handle_removal_notification_with_removal_remover_error(
         [
             "handle-removal-notification",
             "remove",
+            "--recompute",
             "--recovery-bundle",
             str(recovery_bundle_path),
             removal_identifier,
@@ -2653,6 +2655,7 @@ def test_cli_handle_removal_notification_with_removal_requested_not_found(
         [
             "handle-removal-notification",
             "remove",
+            "--recompute",
             "--recovery-bundle",
             str(recovery_bundle_path),
             removal_identifier,
@@ -2688,6 +2691,7 @@ def test_cli_handle_removal_notification_with_removal_ignore_requested(
         [
             "handle-removal-notification",
             "remove",
+            "--recompute",
             "--recovery-bundle",
             str(recovery_bundle_path),
             "--ignore-requested=https://github.com/user1/repo1",
@@ -2709,6 +2713,7 @@ def test_cli_handle_removal_notification_with_removal_ignore_requested(
                 "swh:1:ori:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
             ),
         ),
+        recompute_swhids_to_remove=True,
     )
 
 
@@ -2741,6 +2746,7 @@ def test_cli_handle_removal_notification_with_removal_inventory_stuck(
         [
             "handle-removal-notification",
             "remove",
+            "--recompute",
             "--recovery-bundle",
             str(recovery_bundle_path),
             removal_identifier,

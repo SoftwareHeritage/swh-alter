@@ -135,7 +135,7 @@ class Remover:
         self,
         /,
         storage: StorageInterface,
-        graph_client: RemoteGraphClient,
+        graph_client: Optional[RemoteGraphClient] = None,
         known_missing: Optional[Set[ExtendedSWHID]] = None,
         restoration_storage: Optional[StorageInterface] = None,
         removal_searches: Optional[Dict[str, SearchInterface]] = None,
@@ -178,6 +178,7 @@ class Remover:
         for swhid in swhids:
             _secho(f" - {swhid}")
         _secho("Finding removable objects…", fg="cyan")
+        assert self.graph_client is not None
         inventory_subgraph = make_inventory(
             self.storage,
             self.graph_client,
@@ -559,6 +560,7 @@ class Remover:
         recovery_bundle_path: str,
         ignore_requested=List[Origin | ExtendedSWHID],
         allow_empty_content_objects: bool = False,
+        recompute_swhids_to_remove: bool = True,
     ) -> None:
         assert self.masking_admin is not None
 
@@ -578,20 +580,35 @@ class Remover:
             requested_swhids = [
                 o.swhid() if isinstance(o, Origin) else o for o in requested
             ]
+            # XXX should we add a flag to remove all of them?
+            masking_states = self.masking_admin.get_states_for_request(
+                masking_request.id
+            )
+            decision_pending_swhids = {
+                swhid
+                for swhid, state in masking_states.items()
+                if state == MaskedState.DECISION_PENDING
+            }
 
         # Perform removal
-        try:
-            removable = self.get_removable(requested_swhids)
-        except RootsNotFound as e:
-            _secho(
-                "Some requested objects were not found:",
-                err=True,
-                fg="red",
-                bold=True,
+        if recompute_swhids_to_remove:
+            try:
+                removable = self.get_removable(requested_swhids)
+            except RootsNotFound as e:
+                _secho(
+                    "Some requested objects were not found:",
+                    err=True,
+                    fg="red",
+                    bold=True,
+                )
+                for label in e.get_labels(requested):
+                    _secho(f"- {label}", err=True)
+                raise
+        else:
+            removable = Removable(
+                removable_swhids=list(decision_pending_swhids),
+                referencing=requested_swhids,
             )
-            for label in e.get_labels(requested):
-                _secho(f"- {label}", err=True)
-            raise
 
         decryption_key = self.create_recovery_bundle(
             secret_sharing=secret_sharing,
@@ -615,14 +632,6 @@ class Remover:
         recovery_bundle = RecoveryBundle(recovery_bundle_path)
         removed_swhids = recovery_bundle.swhids
         with self.masking_admin.conn:
-            masking_states = self.masking_admin.get_states_for_request(
-                masking_request.id
-            )
-            decision_pending_swhids = {
-                swhid
-                for swhid, state in masking_states.items()
-                if state == MaskedState.DECISION_PENDING
-            }
             leftover_swhids = decision_pending_swhids - set(removed_swhids)
             record = f"Made {len(removed_swhids)} objects visible again after removal."
             if leftover_swhids:

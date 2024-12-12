@@ -220,6 +220,7 @@ def get_remover(
     require_masking_admin: bool = False,
     require_search: bool = True,
     require_journal: bool = True,
+    require_graph: bool = True,
 ) -> "Remover":
     from psycopg2 import OperationalError, ProgrammingError
 
@@ -238,10 +239,18 @@ def get_remover(
 
     conf = ctx.obj["config"]
 
-    try:
-        graph_client = RemoteGraphClient(**conf["graph"])
-    except GraphAPIError as e:
-        raise click.ClickException(f"Unable to connect to the graph server: {e.args}")
+    if "graph" not in conf:
+        if require_graph:
+            raise click.ClickException("Configuration does not define `graph`")
+        else:
+            graph_client = None
+    else:
+        try:
+            graph_client = RemoteGraphClient(**conf["graph"])
+        except GraphAPIError as e:
+            raise click.ClickException(
+                f"Unable to connect to the graph server: {e.args}"
+            )
 
     storage = get_storage(**conf["storage"])
 
@@ -1386,6 +1395,16 @@ def handle_removal_notification_cli_group(ctx):
     help="object that should be ignored from the list of "
     "requested objects to be removed",
 )
+@click.option(
+    "--recompute/--no-recompute",
+    default=False,
+    help=(
+        "If set, recompute locally the list of swhids to remove to apply "
+        "the given removal request, otherwise, use the list of swhids "
+        "sent in the notification message. Note that an access to swh-graph "
+        "is required to reocmpute this list."
+    ),
+)
 @click.argument(
     "removal-identifier",
     required=True,
@@ -1397,6 +1416,7 @@ def handle_removal_notification_with_removal(
     removal_identifier,
     allow_empty_content_objects,
     ignore_requested,
+    recompute,
 ):
     """Handle removal notification by removing the request objects."""
 
@@ -1404,7 +1424,13 @@ def handle_removal_notification_with_removal(
     from .operations import MaskingRequestNotFound, RemoverError
     from .recovery_bundle import ContentDataNotFound, SecretSharing
 
-    remover = get_remover(ctx, require_masking_admin=True)
+    remover = get_remover(
+        ctx,
+        require_masking_admin=True,
+        require_graph=False,
+        require_search=False,
+        require_journal=False,
+    )
 
     try:
         secret_sharing = SecretSharing.from_dict(
@@ -1429,6 +1455,7 @@ def handle_removal_notification_with_removal(
             recovery_bundle_path=recovery_bundle,
             ignore_requested=ignore_requested or [],
             allow_empty_content_objects=allow_empty_content_objects,
+            recompute_swhids_to_remove=recompute,
         )
     except MaskingRequestNotFound as e:
         click.secho(
