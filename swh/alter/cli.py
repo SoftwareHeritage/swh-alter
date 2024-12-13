@@ -218,9 +218,7 @@ def get_remover(
     ctx: click.Context,
     dry_run: bool = False,
     require_masking_admin: bool = False,
-    require_search: bool = True,
-    require_journal: bool = True,
-    require_graph: bool = True,
+    ignore_backends: Optional[Iterable[str]] = None,
 ) -> "Remover":
     from psycopg2 import OperationalError, ProgrammingError
 
@@ -238,12 +236,14 @@ def get_remover(
     from .operations import Remover
 
     conf = ctx.obj["config"]
+    if ignore_backends is None:
+        ignore_backends = []
 
     if "graph" not in conf:
-        if require_graph:
-            raise click.ClickException("Configuration does not define `graph`")
-        else:
+        if "graph" in ignore_backends:
             graph_client = None
+        else:
+            raise click.ClickException("Configuration does not define `graph`")
     else:
         try:
             graph_client = RemoteGraphClient(**conf["graph"])
@@ -259,7 +259,7 @@ def get_remover(
             raise click.ClickException(
                 "Configuration does not define `restoration_storage`"
             )
-        if require_search and (
+        if "search" not in ignore_backends and (
             "removal_searches" not in conf or len(conf["removal_searches"]) == 0
         ):
             raise click.ClickException(
@@ -273,7 +273,7 @@ def get_remover(
             raise click.ClickException(
                 "Configuration does not define any `removal_objstorages`"
             )
-        if require_journal and (
+        if "journal" not in ignore_backends and (
             "removal_journals" not in conf or len(conf["removal_journals"]) == 0
         ):
             raise click.ClickException(
@@ -413,14 +413,17 @@ def get_remover(
     help="Create recovery bundle even when data for Content object cannot be found",
 )
 @click.option(
-    "--require-journal/--no-require-journal",
-    default=True,
-    help="Check at least one 'removal_journals' has been defined in the config file",
-)
-@click.option(
-    "--require-search/--no-require-search",
-    default=True,
-    help="Check at least one 'removal_searches' has been defined in the config file",
+    "--ignore",
+    "ignore_backends",
+    default=None,
+    multiple=True,
+    type=click.Choice(["search", "journal", "graph"], case_sensitive=False),
+    help=(
+        "Do not make the given backend mandatory when checking the configuration; "
+        "this command is usually meant to remove objects from all possible data silos, "
+        "so the default behavior is to have all of them mandatory in the configuration "
+        "file. Using this option allows to explicitly ignore the given 'backend'"
+    ),
 )
 @click.argument(
     "requested",
@@ -444,8 +447,7 @@ def remove(
     known_missing_swhids,
     known_missing_file,
     allow_empty_content_objects,
-    require_journal,
-    require_search,
+    ignore_backends,
 ) -> None:
     """Remove the given SWHIDs or URLs from the archive."""
 
@@ -474,9 +476,7 @@ def remove(
         except PermissionError:
             raise click.ClickException(f"Permission denied: “{recovery_bundle}”")
 
-    remover = get_remover(
-        ctx, dry_run, require_journal=require_journal, require_search=require_search
-    )
+    remover = get_remover(ctx, dry_run, ignore_backends=ignore_backends)
 
     swhids = [x.swhid() if isinstance(x, Origin) else x for x in requested]
 
@@ -1427,9 +1427,7 @@ def handle_removal_notification_with_removal(
     remover = get_remover(
         ctx,
         require_masking_admin=True,
-        require_graph=False,
-        require_search=False,
-        require_journal=False,
+        ignore_backends=["graph", "search", "journal"],
     )
 
     try:
