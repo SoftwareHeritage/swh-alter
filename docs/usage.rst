@@ -650,7 +650,7 @@ notification watcher.
 
 This process will listen to the journal topic ``swh.journal.removal_notification``
 for unprocessed removal notifications. When one arrives, it will create
-a new request in the :ref:`masking proxy database` <swh-storage-masking>`,
+a new request in the :ref:`masking proxy database <swh-storage-masking>`,
 adding all removed SWHIDs listed in the notification with the state “*decision
 pending*”. These objects will still be present on the mirror but not be
 available to the public. An email will also be sent to the mirror operators to
@@ -694,7 +694,7 @@ The ``journal_client`` map follows the :ref:`journal configuration
 ``swh.journal.notification_removal`` topic.
 
 The ``storage`` map follows the :ref:`storage configuration
-<<cli-config-storage>`. The storage is accessed read-only to perform
+<cli-config-storage>`. The storage is accessed read-only to perform
 verifications on the received removal notifications.
 
 The ``masking_admin`` map must contain the database connection class in ``cls``
