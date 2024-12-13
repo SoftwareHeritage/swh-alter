@@ -1396,13 +1396,26 @@ def handle_removal_notification_cli_group(ctx):
     "requested objects to be removed",
 )
 @click.option(
+    "--ignore",
+    "ignore_backends",
+    default=None,
+    multiple=True,
+    type=click.Choice(["search", "journal", "graph"], case_sensitive=False),
+    help=(
+        "Do not make the given backend mandatory when checking the configuration; "
+        "this command is usually meant to remove objects from all possible data silos, "
+        "so the default behavior is to have all of them mandatory in the configuration "
+        "file. Using this option allows to explicitly ignore the given 'backend'"
+    ),
+)
+@click.option(
     "--recompute/--no-recompute",
     default=False,
     help=(
         "If set, recompute locally the list of swhids to remove to apply "
         "the given removal request, otherwise, use the list of swhids "
         "sent in the notification message. Note that an access to swh-graph "
-        "is required to reocmpute this list."
+        "is required to reocmpute this list. Implies '--ignore graph' if not set."
     ),
 )
 @click.argument(
@@ -1416,6 +1429,7 @@ def handle_removal_notification_with_removal(
     removal_identifier,
     allow_empty_content_objects,
     ignore_requested,
+    ignore_backends,
     recompute,
 ):
     """Handle removal notification by removing the request objects."""
@@ -1424,10 +1438,17 @@ def handle_removal_notification_with_removal(
     from .operations import MaskingRequestNotFound, RemoverError
     from .recovery_bundle import ContentDataNotFound, SecretSharing
 
+    ignore_backends = set(ignore_backends or [])
+
+    if recompute:
+        ignore_backends.discard("graph")
+    else:
+        ignore_backends.add("graph")
+
     remover = get_remover(
         ctx,
         require_masking_admin=True,
-        ignore_backends=["graph", "search", "journal"],
+        ignore_backends=ignore_backends,
     )
 
     try:
