@@ -981,7 +981,7 @@ def test_remover_handle_removal_notification_with_removal_masked_request_not_fou
         (MaskedState.VISIBLE, "Made 18 objects visible again."),
     ],
 )
-def test_handle_removal_notification_by_changing_masked_status_to_restricted(
+def test_handle_removal_notification_by_changing_masked_status(
     masked_status,
     expected_message,
     sample_populated_storage_with_matching_hash,
@@ -1012,6 +1012,12 @@ def test_handle_removal_notification_by_changing_masked_status_to_restricted(
         assert (
             list(sorted(history, key=operator.attrgetter("date")))[-1].message
             == expected_message
+        )
+        assert all(
+            status == masked_status
+            for status in masking_admin.get_states_for_request(
+                masking_request.id
+            ).values()
         )
 
 

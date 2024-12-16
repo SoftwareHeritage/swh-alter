@@ -664,7 +664,7 @@ class Remover:
             swhids = list(masking_states.keys())
             self.masking_admin.set_object_state(
                 masking_request.id,
-                MaskedState.RESTRICTED,
+                masked_state,
                 swhids,
             )
             match masked_state:
