@@ -1548,7 +1548,9 @@ def handle_removal_notification_with_permanent_restriction(
 
     from .operations import MaskingRequestNotFound
 
-    remover = get_remover(ctx, require_masking_admin=True)
+    remover = get_remover(
+        ctx, require_masking_admin=True, ignore_backends=["graph", "search", "journal"]
+    )
 
     try:
         remover.handle_removal_notification_by_changing_masked_status(
@@ -1592,7 +1594,9 @@ def handle_removal_notification_with_dismissal(
 
     from .operations import MaskingRequestNotFound
 
-    remover = get_remover(ctx, require_masking_admin=True)
+    remover = get_remover(
+        ctx, require_masking_admin=True, ignore_backends=["graph", "search", "journal"]
+    )
 
     try:
         remover.handle_removal_notification_by_changing_masked_status(
