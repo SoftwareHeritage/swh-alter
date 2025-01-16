@@ -72,13 +72,13 @@ from .utils import filter_objects_missing_from_storage, iter_swhids_grouped_by_t
 
 logger = logging.getLogger(__name__)
 
-RAGE_PATH = shutil.which("rage")
-RAGE_KEYGEN_PATH = shutil.which("rage-keygen")
+RAGE_PATH = shutil.which("rage") or shutil.which("age")
+RAGE_KEYGEN_PATH = shutil.which("rage-keygen") or shutil.which("age-keygen")
 
 if RAGE_PATH is None:
-    raise ImportError("`rage` not found in path")
+    raise ImportError("`rage` and `age` not found in path")
 if RAGE_KEYGEN_PATH is None:
-    raise ImportError("`rage-keygen` not found in path")
+    raise ImportError("`rage-keygen` and `age-keygen` not found in path")
 
 RECOVERY_BUNDLE_RESTORE_CHUNK_SIZE = 200
 

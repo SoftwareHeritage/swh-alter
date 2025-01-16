@@ -16,12 +16,12 @@ together before proceeding.
 Dependencies
 ------------
 
-``swh-alter`` requires the ``rage``, ``rage-keygen`` and optionally
+``swh-alter`` requires the ``age``/``rage``, ``age-keygen``/``rage-keygen`` and optionally
 ``age-plugin-yubikey`` commands to be available in the ``PATH``.
 
 See their respective documentation on how to install them:
 
-- `rage installation <https://github.com/str4d/rage#installation>`_ (also provides ``rage-keygen``)
+- ``apt install age` for ``age`` and ``age-keygen``, or `rage installation <https://github.com/str4d/rage#installation>`_ for ``rage`` and ``rage-keygen``
 - `age-plugin-yubikey installation <https://github.com/str4d/age-plugin-yubikey#installation>`_
 
 ``age-plugin-yubikey`` also requires the ``pcscd`` service to be installed and

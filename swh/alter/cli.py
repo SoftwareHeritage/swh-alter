@@ -1035,6 +1035,19 @@ def resume_removal(
         ctx.exit(1)
 
 
+def _strip_age_report(output):
+    # age prompts for report when it errors like this:
+    #   age: error: ...................
+    #   age: report unexpected or unhelpful errors at https://filippo.io/age/report
+    # This can be confusing in our case so strip them from the output.
+    return b"\n".join(
+        line
+        for line in output.split(b"\n")
+        if not line.startswith(b"age: error: ")
+        and not line.startswith("age: report unexpected or unhelpful errors at ")
+    )
+
+
 def _strip_rage_report(output):
     # rage prompts for report when it errors like this:
     #   [ Did rage not do what you expected? Could an error be more useful? ]
@@ -1099,7 +1112,7 @@ def recover_decryption_key(
         if "rage" not in ex.cmd[0] and ex.cmd[1] != "--decrypt":
             raise
         click.echo(
-            f"""💥 {click.style('rage decryption failed:', bold=True, fg='red')}"""
+            f"""💥 {click.style('age/rage decryption failed:', bold=True, fg='red')}"""
         )
         click.echo(_strip_rage_report(ex.stderr))
         sys.exit(1)
