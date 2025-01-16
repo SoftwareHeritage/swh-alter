@@ -1109,13 +1109,20 @@ def recover_decryption_key(
             f"\n🔓 Recovered decryption key:\n{click.style(decryption_key, bold=True)}"
         )
     except subprocess.CalledProcessError as ex:
-        if "rage" not in ex.cmd[0] and ex.cmd[1] != "--decrypt":
+        if "rage" in ex.cmd[0] and ex.cmd[1] == "--decrypt":
+            click.echo(
+                f"""💥 {click.style('rage decryption failed:', bold=True, fg='red')}"""
+            )
+            click.echo(_strip_rage_report(ex.stderr))
+            sys.exit(1)
+        elif "age" in ex.cmd[0] and ex.cmd[1] == "--decrypt":
+            click.echo(
+                f"""💥 {click.style('age decryption failed:', bold=True, fg='red')}"""
+            )
+            click.echo(_strip_age_report(ex.stderr))
+            sys.exit(1)
+        else:
             raise
-        click.echo(
-            f"""💥 {click.style('age/rage decryption failed:', bold=True, fg='red')}"""
-        )
-        click.echo(_strip_rage_report(ex.stderr))
-        sys.exit(1)
 
 
 @recovery_bundle_cli_group.command(name="rollover")
