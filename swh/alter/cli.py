@@ -860,10 +860,12 @@ def _share_decryption_keys_provider(share_ids: Set[str]) -> ShareDecryptionKeys:
         except subprocess.CalledProcessError as ex:
             if "age-plugin-yubikey" not in ex.cmd[0]:
                 raise
-            click.echo(
-                f"""💥 {click.style('age-plugin-yubikey failed to '
-                                    'list connected YubiKeys.', bold=True, fg='red')}"""
+            message = click.style(
+                "age-plugin-yubikey failed to list connected YubiKeys.",
+                bold=True,
+                fg="red",
             )
+            click.echo(f"💥 {message}")
             click.echo("💭 Please disconnect all YubiKeys and retry.")
             sys.exit(1)
         if share_ids:
@@ -886,11 +888,13 @@ def _share_decryption_keys_provider(share_ids: Set[str]) -> ShareDecryptionKeys:
                 hide_input=True,
                 prompt_suffix="",
             )
-    click.echo(
-        f"""💥 {click.style('Unable to decrypt enough shared secrets to recover '
-                                   'the object decryption key. Aborting.',
-                                   bold=True, fg='red')}"""
+    message = click.style(
+        "Unable to decrypt enough shared secrets to recover "
+        "the object decryption key. Aborting.",
+        bold=True,
+        fg="red",
     )
+    click.echo(f"💥 {message}")
     sys.exit(1)
 
 
@@ -964,10 +968,10 @@ def prompting_object_decryption_key_provider(
         fmt_ids = ", ".join(
             click.style(share_id, fg="magenta", bold=True) for share_id in missing_ids
         )
-        click.echo(
-            f"""\n🚸 {click.style('The following secret shares will not be '
-                                    'decrypted:', fg='yellow')} {fmt_ids}\n"""
+        message = click.style(
+            "The following secret shares will not be decrypted:", fg="yellow"
         )
+        click.echo(f"\n🚸 {message} {fmt_ids}\n")
 
     return recover_object_decryption_key_from_encrypted_shares(
         manifest.decryption_key_shares,
