@@ -348,10 +348,11 @@ class Lister:
                 # returning revision objects instead of dicts
                 revision = Revision.from_dict(rev_d)
             revision_swhid = revision.swhid().to_extended()
-            # We might know about this revision already from a previous revision log.
-            # In that case there is no need to go any further up the log.
+            # We might know about this revision already from a previous revision
+            # log, we can skip it. We can't skip further commits though, as the
+            # history doesn't have to be strictly linear.
             if self._subgraph.vs.select(name=str(revision_swhid), complete=True):
-                break
+                continue
             # We can say these don’t need to be fetched as we know that
             # we are getting everything about this revision here:
             # its directory and parents.
