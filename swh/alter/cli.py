@@ -220,7 +220,7 @@ def get_remover(
     require_masking_admin: bool = False,
     ignore_backends: Optional[Iterable[str]] = None,
 ) -> "Remover":
-    from psycopg2 import OperationalError, ProgrammingError
+    from psycopg import OperationalError, ProgrammingError
 
     from swh.core.api import RemoteException
     from swh.graph.http_client import GraphAPIError, RemoteGraphClient
@@ -1531,8 +1531,8 @@ def handle_removal_notification_with_removal(
         # Showing the exception and rolling back has been handled by
         # handle_removal_notification_with_removal()
         ctx.exit(1)
-    except Exception as e:
-        raise e
+    except Exception:
+        raise
 
 
 @handle_removal_notification_cli_group.command(name="restrict-permanently")

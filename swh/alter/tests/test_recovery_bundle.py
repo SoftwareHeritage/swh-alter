@@ -637,9 +637,9 @@ def test_create_recovery_bundle(
             "origin_visits/swh_1_ori_9147ab9c9287940d4fdbe95d8780664d7ad2dfc0_1.age",
             "origin_visit_statuses/swh_1_ori_9147ab9c9287940d4fdbe95d8780664d7ad2dfc0_1_2015-01-01T23_00_00.000000+00_00.age",
             "raw_extrinsic_metadata/1_swh_1_emd_101d70c3574c1e4b730d7ba8e83a4bdadc8691cb.age",
-            "raw_extrinsic_metadata/2_swh_1_emd_ef3b0865c7a05f79772a3189ddfc8515ec3e1844.age",
-            "raw_extrinsic_metadata/3_swh_1_emd_43dad4d96edf2fb4f77f0dbf72113b8fe8b5b664.age",
-            "raw_extrinsic_metadata/4_swh_1_emd_9cafd9348f3a7729c2ef0b9b149ba421589427f0.age",
+            "raw_extrinsic_metadata/2_swh_1_emd_43dad4d96edf2fb4f77f0dbf72113b8fe8b5b664.age",
+            "raw_extrinsic_metadata/3_swh_1_emd_9cafd9348f3a7729c2ef0b9b149ba421589427f0.age",
+            "raw_extrinsic_metadata/4_swh_1_emd_ef3b0865c7a05f79772a3189ddfc8515ec3e1844.age",
             "manifest.yml",
         ]
         # Can we load the manifest?
@@ -709,9 +709,9 @@ def test_create_recovery_bundle(
                 "visit": "1",
             },
             bytes.fromhex("101d70c3574c1e4b730d7ba8e83a4bdadc8691cb"),
-            bytes.fromhex("ef3b0865c7a05f79772a3189ddfc8515ec3e1844"),
             bytes.fromhex("43dad4d96edf2fb4f77f0dbf72113b8fe8b5b664"),
             bytes.fromhex("9cafd9348f3a7729c2ef0b9b149ba421589427f0"),
+            bytes.fromhex("ef3b0865c7a05f79772a3189ddfc8515ec3e1844"),
         ]
 
 

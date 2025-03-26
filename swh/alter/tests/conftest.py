@@ -551,7 +551,7 @@ def sample_populated_storage_with_matching_hash(swh_storage, sample_data):
         "ori_metadata:add": 3,
         "extid:add": 4,
     }
-    return swh_storage
+    yield swh_storage
 
 
 @pytest.fixture
@@ -917,7 +917,6 @@ def populated_masking_admin(
     example_removal_notification_with_matching_hash: RemovalNotification,
 ) -> MaskingAdmin:
     masking_admin = MaskingAdmin.connect(masking_db_postgresql_dsn)
-    masking_admin.conn.autocommit = False
     example_watcher.process_removal_notification(
         example_removal_notification_with_matching_hash
     )

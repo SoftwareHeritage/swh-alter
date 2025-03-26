@@ -136,13 +136,11 @@ class MirrorNotificationWatcher:
             "Received a removal notification “%s”", notification.removal_identifier
         )
         masking_admin = MaskingAdmin.connect(self._masking_admin_dsn)
-        # We do want to do a proper atomic transaction here
-        masking_admin.conn.autocommit = False
         masking_request_slug = (
             f"{MASKING_REQUEST_IDENTIFIER_PREFIX}{notification.removal_identifier}"
         )
         try:
-            with masking_admin.conn:
+            with masking_admin.conn.transaction():
                 info = {
                     "reason": notification.reason,
                     "requested": [

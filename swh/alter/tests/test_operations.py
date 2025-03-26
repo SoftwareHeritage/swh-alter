@@ -926,7 +926,7 @@ def test_remover_handle_removal_notification_with_removal(
         ]
     )
 
-    with masking_admin.conn:
+    with masking_admin.conn.transaction():
         masking_request = masking_admin.find_request(
             f"{MASKING_REQUEST_IDENTIFIER_PREFIX}{notification_removal_identifier}"
         )
@@ -1004,7 +1004,7 @@ def test_handle_removal_notification_by_changing_masked_status(
         notification_removal_identifier=notification_removal_identifier,
         masked_state=masked_status,
     )
-    with masking_admin.conn:
+    with masking_admin.conn.transaction():
         masking_request = masking_admin.find_request(
             f"{MASKING_REQUEST_IDENTIFIER_PREFIX}{notification_removal_identifier}"
         )

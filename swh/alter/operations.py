@@ -568,7 +568,7 @@ class Remover:
             f"{MASKING_REQUEST_IDENTIFIER_PREFIX}{notification_removal_identifier}"
         )
         # Recover data required to perform removal
-        with self.masking_admin.conn:
+        with self.masking_admin.conn.transaction():
             masking_request = self.masking_admin.find_request(masking_request_slug)
             if masking_request is None:
                 raise MaskingRequestNotFound(masking_request_slug)
@@ -631,7 +631,7 @@ class Remover:
         # Clear removed objects in masking db
         recovery_bundle = RecoveryBundle(recovery_bundle_path)
         removed_swhids = recovery_bundle.swhids
-        with self.masking_admin.conn:
+        with self.masking_admin.conn.transaction():
             leftover_swhids = decision_pending_swhids - set(removed_swhids)
             record = f"Made {len(removed_swhids)} objects visible again after removal."
             if leftover_swhids:
@@ -654,7 +654,7 @@ class Remover:
         masking_request_slug = (
             f"{MASKING_REQUEST_IDENTIFIER_PREFIX}{notification_removal_identifier}"
         )
-        with self.masking_admin.conn:
+        with self.masking_admin.conn.transaction():
             masking_request = self.masking_admin.find_request(masking_request_slug)
             if masking_request is None:
                 raise MaskingRequestNotFound(masking_request_slug)
