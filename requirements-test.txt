@@ -2,6 +2,7 @@ pytest >= 8.1
 pytest-smtpd
 swh.core[testing] >= 4.0.0
 swh.graph[testing]
+swh.journal[pytest] >= 2.0.0
 swh.storage[testing] >= 3.0.0
 types-pyyaml
 types-tabulate
