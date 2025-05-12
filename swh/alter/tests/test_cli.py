@@ -344,7 +344,7 @@ def test_cli_remove_errors_when_inventory_is_stuck(
             ]
         ),
     )
-    runner = CliRunner(mix_stderr=False)
+    runner = CliRunner()
     result = runner.invoke(
         remove,
         [
@@ -378,7 +378,7 @@ def test_cli_remove_errors_when_roots_not_found(
             )
         ),
     )
-    runner = CliRunner(mix_stderr=False)
+    runner = CliRunner()
     result = runner.invoke(
         remove,
         [
@@ -598,7 +598,7 @@ def test_cli_remove_errors_when_content_data_not_found(
             )
         ),
     )
-    runner = CliRunner(mix_stderr=False)
+    runner = CliRunner()
     result = runner.invoke(
         remove,
         [
@@ -631,7 +631,7 @@ def test_cli_remove_allow_empty_content_objects(
     mocker.patch.object(
         sample_populated_storage.objstorage, "content_get", return_value=None
     )
-    runner = CliRunner(mix_stderr=False)
+    runner = CliRunner()
     result = runner.invoke(
         alter_cli_group,
         [
@@ -831,7 +831,7 @@ def test_cli_remove_restores_bundle_when_remove_fails(
 
 
 def test_cli_list_candidates_omit_referenced(mocked_external_resources, remove_config):
-    runner = CliRunner(mix_stderr=False)
+    runner = CliRunner()
     result = runner.invoke(
         list_candidates,
         ["swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165"],
@@ -860,7 +860,7 @@ def test_cli_list_candidates_omit_referenced(mocked_external_resources, remove_c
 def test_cli_list_candidates_no_omit_referenced(
     mocked_external_resources, remove_config
 ):
-    runner = CliRunner(mix_stderr=False)
+    runner = CliRunner()
     result = runner.invoke(
         list_candidates,
         ["--no-omit-referenced", "https://example.com/swh/graph2"],
@@ -903,7 +903,7 @@ def test_cli_list_candidates_no_omit_referenced(
 
 
 def test_cli_list_candidates_multiple_swhids(mocked_external_resources, remove_config):
-    runner = CliRunner(mix_stderr=False)
+    runner = CliRunner()
     result = runner.invoke(
         list_candidates,
         [
@@ -938,7 +938,7 @@ def test_cli_list_candidates_multiple_swhids(mocked_external_resources, remove_c
 def test_cli_list_candidates_stuck_inventory(
     mocker, mocked_external_resources, remove_config
 ):
-    runner = CliRunner(mix_stderr=False)
+    runner = CliRunner()
     mocker.patch(
         "swh.alter.inventory.make_inventory",
         side_effect=StuckInventoryException(
@@ -963,7 +963,7 @@ def test_cli_list_candidates_stuck_inventory(
 def test_cli_list_candidates_origin_not_found(
     mocker, mocked_external_resources, remove_config
 ):
-    runner = CliRunner(mix_stderr=False)
+    runner = CliRunner()
     mocker.patch(
         "swh.alter.inventory.make_inventory",
         side_effect=RootsNotFound(

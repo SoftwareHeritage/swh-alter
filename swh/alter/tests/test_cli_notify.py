@@ -120,7 +120,7 @@ def test_cli_remove_journal_notify(
         swh:1:cnt:0000000000000000000000000000000000000011
         """.rstrip().splitlines()
     }
-    runner = CliRunner(mix_stderr=False)
+    runner = CliRunner()
     result = runner.invoke(
         list_candidates,
         [origin],
