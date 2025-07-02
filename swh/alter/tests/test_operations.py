@@ -790,8 +790,26 @@ def test_remover_register_objects_from_bundle(
         }
     assert obj_swhids == expected_swhids
     expected_unique_keys = [
-        bytes.fromhex("3e21cc4942a4234c9e5edd8a9cacd1670fe59f13"),
-        bytes.fromhex("34973274ccef6ab4dfaaf86599792fa9c3fe4689"),
+        {
+            "sha1": bytes.fromhex("3e21cc4942a4234c9e5edd8a9cacd1670fe59f13"),
+            "sha1_git": bytes.fromhex("c932c7649c6dfa4b82327d121215116909eb3bea"),
+            "sha256": bytes.fromhex(
+                "92fb72daf8c6818288a35137b72155f507e5de8d892712ab96277aaed8cf8a36"
+            ),
+            "blake2s256": bytes.fromhex(
+                "76d0346f44e5a27f6bafdd9c2befd304aff83780f93121d801ab6a1d4769db11"
+            ),
+        },
+        {
+            "sha1": bytes.fromhex("34973274ccef6ab4dfaaf86599792fa9c3fe4689"),
+            "sha1_git": bytes.fromhex("d81cc0710eb6cf9efd5b920a8453e1e07157b6cd"),
+            "sha256": bytes.fromhex(
+                "084c799cd551dd1d8d5c5f9a5d593b2e931f5e36122ee5c793c1d08a19839cc0"
+            ),
+            "blake2s256": bytes.fromhex(
+                "d5fe1939576527e42cfd76a9455a2432fe7f56669564577dd93c4280e76d661d"
+            ),
+        },
         {
             "sha1": bytes.fromhex("43e45d56f88993aae6a0198013efa80716fd8920"),
             "sha1_git": bytes.fromhex("33e45d56f88993aae6a0198013efa80716fd8920"),
