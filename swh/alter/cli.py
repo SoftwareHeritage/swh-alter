@@ -8,17 +8,7 @@ from __future__ import annotations
 import logging
 import pathlib
 import sys
-from typing import (
-    TYPE_CHECKING,
-    Callable,
-    Dict,
-    Iterable,
-    Optional,
-    Set,
-    TextIO,
-    Tuple,
-    cast,
-)
+from typing import TYPE_CHECKING, Callable, Dict, Iterable, Set, TextIO, Tuple, cast
 
 import click
 
@@ -75,12 +65,12 @@ class ClickLoggingHandler(logging.Handler):
 
 
 def progressbar(
-    iterable: Optional[Iterable[V]] = None,
-    length: Optional[int] = None,
-    label: Optional[str] = None,
+    iterable: Iterable[V] | None = None,
+    length: int | None = None,
+    label: str | None = None,
     show_eta: bool = True,
     show_pos: bool = False,
-    show_percent: Optional[bool] = None,
+    show_percent: bool | None = None,
     item_show_func: Callable[[V | None], str | None] | None = None,
 ) -> ProgressBar[V]:
     bar = click.progressbar(
@@ -218,7 +208,7 @@ def get_remover(
     ctx: click.Context,
     dry_run: bool = False,
     require_masking_admin: bool = False,
-    ignore_backends: Optional[Iterable[str]] = None,
+    ignore_backends: Iterable[str] | None = None,
 ) -> "Remover":
     from psycopg import OperationalError, ProgrammingError
 
@@ -480,7 +470,7 @@ def remove(
 
     swhids = [x.swhid() if isinstance(x, Origin) else x for x in requested]
 
-    journal_writer: Optional[JournalWriterInterface] = None
+    journal_writer: JournalWriterInterface | None = None
     if "journal_writer" in ctx.obj["config"]:
         cfg = ctx.obj["config"]["journal_writer"]
         journal_writer = get_journal_writer(**cfg)
@@ -898,7 +888,7 @@ def _share_decryption_keys_provider(share_ids: Set[str]) -> ShareDecryptionKeys:
     sys.exit(1)
 
 
-def _print_decrypted_mnemonic(mnemonic: str, share_id: Optional[str] = None) -> None:
+def _print_decrypted_mnemonic(mnemonic: str, share_id: str | None = None) -> None:
     fmt_from = ""
     if share_id:
         fmt_from = f" from {click.style(share_id, fg='magenta', bold=True)}"
@@ -1200,7 +1190,7 @@ def resume_removal(
     from .recovery_bundle import WrongDecryptionKey
 
     remover = get_remover(ctx)
-    journal_writer: Optional[JournalWriterInterface] = None
+    journal_writer: JournalWriterInterface | None = None
     if "journal_writer" in ctx.obj["config"]:
         cfg = ctx.obj["config"]["journal_writer"]
         journal_writer = get_journal_writer(**cfg)

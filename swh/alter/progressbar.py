@@ -5,16 +5,7 @@
 
 import logging
 from types import TracebackType
-from typing import (
-    Callable,
-    Generic,
-    Iterable,
-    Iterator,
-    Optional,
-    Protocol,
-    TypeVar,
-    cast,
-)
+from typing import Callable, Generic, Iterable, Iterator, Protocol, TypeVar, cast
 
 V = TypeVar("V")
 
@@ -28,16 +19,16 @@ class ProgressBar(Protocol, Generic[V]):
 
     def __exit__(
         self,
-        exc_type: Optional[type[BaseException]],
-        exc_value: Optional[BaseException],
-        tb: Optional[TracebackType],
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        tb: TracebackType | None,
     ) -> None: ...
 
     def __iter__(self) -> Iterator[V]: ...
 
     def __next__(self) -> V: ...
 
-    def update(self, n_steps: int, current_item: Optional[V] = None) -> None: ...
+    def update(self, n_steps: int, current_item: V | None = None) -> None: ...
 
 
 class NoProgressBar(Generic[V]):
@@ -46,7 +37,7 @@ class NoProgressBar(Generic[V]):
     Typically returned by :py:func:`no_progressbar`.
     """
 
-    def __init__(self, iterable: Iterable[V], label: Optional[str] = None):
+    def __init__(self, iterable: Iterable[V], label: str | None = None):
         self.iter = iter(iterable)
         if label:
             logger.info(label)
@@ -56,9 +47,9 @@ class NoProgressBar(Generic[V]):
 
     def __exit__(
         self,
-        exc_type: Optional[type[BaseException]],
-        exc_value: Optional[BaseException],
-        tb: Optional[TracebackType],
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        tb: TracebackType | None,
     ) -> None:
         pass
 
@@ -68,7 +59,7 @@ class NoProgressBar(Generic[V]):
     def __next__(self) -> V:
         return next(iter(self))
 
-    def update(self, n_steps: int, current_item: Optional[V] = None) -> None:
+    def update(self, n_steps: int, current_item: V | None = None) -> None:
         pass
 
 
@@ -77,23 +68,23 @@ class ProgressBarInit(Protocol):
 
     def __call__(
         self,
-        iterable: Optional[Iterable[V]] = None,
-        length: Optional[int] = None,
-        label: Optional[str] = None,
+        iterable: Iterable[V] | None = None,
+        length: int | None = None,
+        label: str | None = None,
         show_eta: bool = True,
         show_pos: bool = False,
-        show_percent: Optional[bool] = None,
+        show_percent: bool | None = None,
         item_show_func: Callable[[V | None], str | None] | None = None,
     ) -> ProgressBar[V]: ...
 
 
 def no_progressbar(
-    iterable: Optional[Iterable[V]] = None,
-    length: Optional[int] = None,
-    label: Optional[str] = None,
+    iterable: Iterable[V] | None = None,
+    length: int | None = None,
+    label: str | None = None,
     show_eta: bool = True,
     show_pos: bool = False,
-    show_percent: Optional[bool] = None,
+    show_percent: bool | None = None,
     item_show_func: Callable[[V | None], str | None] | None = None,
 ) -> ProgressBar[V]:
     """Returns a :py:class:`ProgressBar` that displays nothing.
