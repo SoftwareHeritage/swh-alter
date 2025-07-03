@@ -83,7 +83,7 @@ class ProgressBarInit(Protocol):
         show_eta: bool = True,
         show_pos: bool = False,
         show_percent: Optional[bool] = None,
-        item_show_func: Optional[Callable[[V], str]] = None,
+        item_show_func: Callable[[V | None], str | None] | None = None,
     ) -> ProgressBar[V]: ...
 
 
@@ -94,7 +94,7 @@ def no_progressbar(
     show_eta: bool = True,
     show_pos: bool = False,
     show_percent: Optional[bool] = None,
-    item_show_func: Optional[Callable[[V], str]] = None,
+    item_show_func: Callable[[V | None], str | None] | None = None,
 ) -> ProgressBar[V]:
     """Returns a :py:class:`ProgressBar` that displays nothing.
 
