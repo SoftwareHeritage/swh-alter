@@ -756,7 +756,17 @@ def test_remover_register_objects_from_bundle(
     def register_object(obj: BaseModel):
         if hasattr(obj, "swhid"):
             obj_swhids.add(str(obj.swhid()))
-        obj_unique_keys.append(obj.unique_key())
+
+        # use obj.hashes() for content objects to make it compatible with both
+        # swh.model 8.1 and later versions (in which obj.unique_key() now
+        # returns the dict of hashes)
+        #
+        # TODO: revert to obj.unique_key() when swh.model>8.1 has been
+        # officially published
+        if hasattr(obj, "hashes"):
+            obj_unique_keys.append(obj.hashes())
+        else:
+            obj_unique_keys.append(obj.unique_key())
 
     mocker.patch.object(remover, "register_object", side_effect=register_object)
 
