@@ -1,4 +1,4 @@
-# Copyright (C) 2023-2024 The Software Heritage developers
+# Copyright (C) 2023-2025 The Software Heritage developers
 # See the AUTHORS file at the top-level directory of this distribution
 # License: GNU General Public License version 3, or any later version
 # See top-level LICENSE file for more information
@@ -33,16 +33,13 @@ import yaml
 from swh.core.utils import grouper
 from swh.graph.http_client import RemoteGraphClient
 from swh.journal.writer.kafka import KafkaJournalWriter
+from swh.model.hashutil import HashDict
 from swh.model.model import BaseModel, Content, KeyType, Origin
 from swh.model.swhids import CoreSWHID, ExtendedObjectType, ExtendedSWHID
 from swh.model.swhids import ObjectType as CoreSWHIDObjectType
 from swh.objstorage.exc import Error as ObjstorageError
 from swh.objstorage.exc import ObjNotFoundError
-from swh.objstorage.interface import (
-    CompositeObjId,
-    ObjStorageInterface,
-    objid_from_dict,
-)
+from swh.objstorage.interface import ObjStorageInterface, objid_from_dict
 from swh.search.interface import SearchInterface
 from swh.storage.interface import ObjectDeletionInterface, StorageInterface
 from swh.storage.proxies.masking.db import MaskedState, MaskingAdmin, MaskingRequest
@@ -157,7 +154,7 @@ class Remover:
         self.recovery_bundle_path: Optional[str] = None
         self.object_secret_key: Optional[AgeSecretKey] = None
         self.swhids_to_remove: List[ExtendedSWHID] = []
-        self.objids_to_remove: List[CompositeObjId] = []
+        self.objids_to_remove: List[HashDict] = []
         self.origin_urls_to_remove: List[str] = []
         self.journal_objects_to_remove: Dict[str, List[KeyType]] = (
             collections.defaultdict(list)
