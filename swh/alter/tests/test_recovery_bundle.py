@@ -1021,7 +1021,12 @@ def test_recovery_bundle_directories(sample_recovery_bundle, sample_data):
 
 
 def test_recovery_bundle_revisions(sample_recovery_bundle, sample_data):
-    revisions = list(sample_recovery_bundle.revisions())
+    revisions = [
+        # the revisions in sample_data had metadata at the time the sample
+        # recovery bundle was generated but those were removed since
+        rev.evolve(metadata=None)
+        for rev in sample_recovery_bundle.revisions()
+    ]
     assert revisions == sorted_by_swhid([sample_data.revision, sample_data.revision2])
 
 
