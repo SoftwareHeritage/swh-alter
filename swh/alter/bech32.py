@@ -1,5 +1,5 @@
 # Copyright (c) 2017, 2020 Pieter Wuille
-#               2023 The Software Heritage developers
+# Copyright (c) 2023  The Software Heritage developers
 #
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
