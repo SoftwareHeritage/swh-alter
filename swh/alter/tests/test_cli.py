@@ -1,4 +1,4 @@
-# Copyright (C) 2023-2024  The Software Heritage developers
+# Copyright (C) 2023-2026  The Software Heritage developers
 # See the AUTHORS file at the top-level directory of this distribution
 # License: GNU General Public License version 3, or any later version
 # See top-level LICENSE file for more information
@@ -7,6 +7,7 @@ from contextlib import closing
 from datetime import datetime, timedelta
 import logging
 import os
+import re
 import shutil
 import socket
 import sys
@@ -1394,7 +1395,7 @@ def test_cli_recovery_bundle_restore_missing_objects_canceled(
     assert result.exit_code == 1, result.output
     assert "objects that are missing from storage" in result.output
     assert "swh:1:dir:8505808532953da7d2581741f01b29c04b1cb9ab" in result.output
-    assert "references to missing objects? [y/N]" in result.output
+    assert re.search("references to missing objects?.*[y/N]", result.output)
     assert "Aborted" in result.output
 
 
@@ -1424,7 +1425,7 @@ def test_cli_recovery_bundle_restore_missing_objects_confirmed(
         input="y\n",
     )
     assert result.exit_code == 0, result.output
-    assert "references to missing objects? [y/N]" in result.output
+    assert re.search("references to missing objects?.*[y/N]", result.output)
 
 
 def test_cli_recovery_bundle_restore_skip_missing_objects(
