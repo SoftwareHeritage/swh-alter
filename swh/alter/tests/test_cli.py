@@ -504,17 +504,13 @@ def test_cli_remove_known_missing_file(
     remove_config,
 ):
     known_missing_path = tmp_path / "known-missing"
-    known_missing_path.write_text(
-        textwrap.dedent(
-            """\
+    known_missing_path.write_text(textwrap.dedent("""\
             swh:1:snp:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
             # A revision
             swh:1:rev:cccccccccccccccccccccccccccccccccccccccc
 
             # Comments and blank lines, yeah!
-            """.rstrip()
-        )
-    )
+            """.rstrip()))
     spy_init = mocker.spy(Remover, "__init__")
     runner = CliRunner()
     runner.invoke(
@@ -565,15 +561,13 @@ def test_cli_remove_known_missing_stdin(
             "-",
             "https://example.com/swh/graph",
         ],
-        input=textwrap.dedent(
-            """\
+        input=textwrap.dedent("""\
             swh:1:snp:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
             # A revision
             swh:1:rev:cccccccccccccccccccccccccccccccccccccccc
 
             # Comments and blank lines, yeah!
-            """.rstrip()
-        ),
+            """.rstrip()),
         obj={"config": remove_config},
         catch_exceptions=False,
     )
@@ -840,9 +834,7 @@ def test_cli_list_candidates_omit_referenced(mocked_external_resources, remove_c
         catch_exceptions=False,
     )
     assert result.exit_code == 0
-    assert set(result.stdout.splitlines()) == {
-        line.strip()
-        for line in """\
+    assert set(result.stdout.splitlines()) == {line.strip() for line in """\
         swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165
         swh:1:snp:0000000000000000000000000000000000000022
         swh:1:rel:0000000000000000000000000000000000000021
@@ -854,8 +846,7 @@ def test_cli_list_candidates_omit_referenced(mocked_external_resources, remove_c
         swh:1:rev:0000000000000000000000000000000000000013
         swh:1:dir:0000000000000000000000000000000000000012
         swh:1:cnt:0000000000000000000000000000000000000011
-        """.rstrip().splitlines()
-    }
+        """.rstrip().splitlines()}
 
 
 def test_cli_list_candidates_no_omit_referenced(
@@ -869,9 +860,7 @@ def test_cli_list_candidates_no_omit_referenced(
         catch_exceptions=False,
     )
     assert result.exit_code == 0
-    assert set(result.stdout.splitlines()) == {
-        line.strip()
-        for line in """\
+    assert set(result.stdout.splitlines()) == {line.strip() for line in """\
         swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165
         swh:1:snp:0000000000000000000000000000000000000022
         swh:1:rel:0000000000000000000000000000000000000021
@@ -899,8 +888,7 @@ def test_cli_list_candidates_no_omit_referenced(
         swh:1:emd:a777e9317d1241a026f481b662f2b51a37297a32
         swh:1:emd:d54fab7faa95094689f605314763170cf5fa2aa7
         swh:1:emd:f584cf10d8e222ccd1301e70d531d894fd3c3263
-        """.rstrip().splitlines()
-    }
+        """.rstrip().splitlines()}
 
 
 def test_cli_list_candidates_multiple_swhids(mocked_external_resources, remove_config):
@@ -916,9 +904,7 @@ def test_cli_list_candidates_multiple_swhids(mocked_external_resources, remove_c
         catch_exceptions=False,
     )
     assert result.exit_code == 0, result.output
-    assert set(result.stdout.splitlines()) == {
-        line.strip()
-        for line in """\
+    assert set(result.stdout.splitlines()) == {line.strip() for line in """\
         swh:1:dir:0000000000000000000000000000000000000008
         swh:1:cnt:0000000000000000000000000000000000000007
         swh:1:dir:0000000000000000000000000000000000000006
@@ -932,8 +918,7 @@ def test_cli_list_candidates_multiple_swhids(mocked_external_resources, remove_c
         swh:1:emd:a777e9317d1241a026f481b662f2b51a37297a32
         swh:1:emd:d54fab7faa95094689f605314763170cf5fa2aa7
         swh:1:emd:f584cf10d8e222ccd1301e70d531d894fd3c3263
-        """.rstrip().splitlines()
-    }
+        """.rstrip().splitlines()}
 
 
 def test_cli_list_candidates_stuck_inventory(
@@ -2381,9 +2366,7 @@ def mirror_notification_watcher_config_path(
     smtpd,
 ):
     conf_path = tmp_path / "swh-config.yml"
-    conf_path.write_text(
-        textwrap.dedent(
-            f"""\
+    conf_path.write_text(textwrap.dedent(f"""\
         journal_client:
           brokers: {kafka_server}
           group_id: test watcher
@@ -2401,9 +2384,7 @@ def mirror_notification_watcher_config_path(
         smtp:
           host: {smtpd.hostname}
           port: {smtpd.port}
-    """
-        )
-    )
+    """))
     yield str(conf_path)
 
 

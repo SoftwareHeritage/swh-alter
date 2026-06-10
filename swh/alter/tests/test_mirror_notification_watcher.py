@@ -1,4 +1,4 @@
-# Copyright (C) 2024  The Software Heritage developers
+# Copyright (C) 2024-2026  The Software Heritage developers
 # See the AUTHORS file at the top-level directory of this distribution
 # License: GNU General Public License version 3, or any later version
 # See top-level LICENSE file for more information
@@ -134,9 +134,7 @@ def test_format_removal_email(
 ):
     text = example_watcher.format_removal_email(example_removal_notification)
     print(text)
-    assert (
-        textwrap.dedent(
-            """\
+    assert textwrap.dedent("""\
         - origin: 1
         - snapshot: 1
         - release: 1
@@ -144,10 +142,7 @@ def test_format_removal_email(
         - directory: 1
         - content: 2
         - raw extrinsic metadata: 1
-        """
-        )
-        in text
-    )
+        """) in text
     assert "    We need to test stuff" in text
     assert "- https://example.com/swh/graph" in text
     assert "- swh:1:snp:0000000000000000000000000000000000000022" in text
@@ -167,9 +162,7 @@ def test_format_removal_email_with_missing_requested_objects(
     text = example_watcher.format_removal_email(
         RemovalNotification.from_dict(notification_d)
     )
-    assert (
-        textwrap.dedent(
-            """\
+    assert textwrap.dedent("""\
         - origin: 1
         - snapshot: 2
         - release: 1
@@ -177,10 +170,7 @@ def test_format_removal_email_with_missing_requested_objects(
         - directory: 1
         - content: 2
         - raw extrinsic metadata: 1
-        """
-        )
-        in text
-    )
+        """) in text
     assert "- https://example.com/swh/graph" in text
     assert "- swh:1:snp:0000000000000000000000000000000000000022" in text
     assert (

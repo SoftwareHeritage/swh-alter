@@ -1,5 +1,5 @@
 # Copyright (c) 2017, 2020 Pieter Wuille
-# Copyright (c) 2023  The Software Heritage developers
+# Copyright (C) 2023-2026  The Software Heritage developers
 #
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -21,7 +21,6 @@
 # THE SOFTWARE.
 
 """Reference implementation for Bech32/Bech32m and segwit addresses."""
-
 
 from enum import Enum
 from typing import List, Optional, Tuple

@@ -1,4 +1,4 @@
-# Copyright (C) 2023-2024  The Software Heritage developers
+# Copyright (C) 2023-2026  The Software Heritage developers
 # See the AUTHORS file at the top-level directory of this distribution
 # License: GNU General Public License version 3, or any later version
 # See top-level LICENSE file for more information
@@ -444,14 +444,12 @@ def test_remover_remove_from_objstorages_object_missing_from_all_objstorages(
     ]
     with caplog.at_level(logging.INFO):
         remover.remove_from_objstorages()
-    expected = textwrap.dedent(
-        """\
+    expected = textwrap.dedent("""\
         Objects not found in any objstorage:
         | blake2s256                                                       | sha1                                     | sha1_git                                 | sha256                                                           |
         |------------------------------------------------------------------|------------------------------------------|------------------------------------------|------------------------------------------------------------------|
         | 0000000000000000000000000000000000000000000000000000000000000014 | 0000000000000000000000000000000000000014 | 0000000000000000000000000000000000000014 | 0000000000000000000000000000000000000000000000000000000000000014 |
-        """.rstrip()  # noqa: B950
-    )
+        """.rstrip())  # noqa: B950
     assert expected == caplog.records[-1].message
 
 

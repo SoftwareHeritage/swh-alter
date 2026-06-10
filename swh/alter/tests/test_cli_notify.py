@@ -1,4 +1,4 @@
-# Copyright (C) 2023-2024  The Software Heritage developers
+# Copyright (C) 2023-2026  The Software Heritage developers
 # See the AUTHORS file at the top-level directory of this distribution
 # License: GNU General Public License version 3, or any later version
 # See top-level LICENSE file for more information
@@ -109,9 +109,7 @@ def test_cli_remove_journal_notify(
     hijack_content_from_data,
 ):
     origin = "swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165"
-    expected_swhids = {
-        line.strip()
-        for line in """\
+    expected_swhids = {line.strip() for line in """\
         swh:1:ori:8f50d3f60eae370ddbf85c86219c55108a350165
         swh:1:snp:0000000000000000000000000000000000000022
         swh:1:rel:0000000000000000000000000000000000000021
@@ -123,8 +121,7 @@ def test_cli_remove_journal_notify(
         swh:1:rev:0000000000000000000000000000000000000013
         swh:1:dir:0000000000000000000000000000000000000012
         swh:1:cnt:0000000000000000000000000000000000000011
-        """.rstrip().splitlines()
-    }
+        """.rstrip().splitlines()}
     runner = CliRunner()
     result = runner.invoke(
         list_candidates,
