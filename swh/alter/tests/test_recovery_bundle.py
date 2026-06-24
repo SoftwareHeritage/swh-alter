@@ -1,4 +1,4 @@
-# Copyright (C) 2023-2024  The Software Heritage developers
+# Copyright (C) 2023-2026  The Software Heritage developers
 # See the AUTHORS file at the top-level directory of this distribution
 # License: GNU General Public License version 3, or any later version
 # See top-level LICENSE file for more information
@@ -1223,3 +1223,5 @@ def test_rollover_fails_when_unable_to_write(
     assert new_bundle.share_ids == share_ids
     assert new_bundle.object_decryption_key == OBJECT_SECRET_KEY
     assert new_bundle.get_dict(swhids[0]) is not None
+
+    os.chmod(tmp_path, 0o700)
