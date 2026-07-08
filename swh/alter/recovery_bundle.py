@@ -1,4 +1,4 @@
-# Copyright (C) 2023  The Software Heritage developers
+# Copyright (C) 2023-2026  The Software Heritage developers
 # See the AUTHORS file at the top-level directory of this distribution
 # License: GNU General Public License version 3, or any later version
 # See top-level LICENSE file for more information
@@ -27,6 +27,7 @@ from typing import (
     Iterator,
     List,
     Optional,
+    Self,
     Sequence,
     Set,
     TextIO,
@@ -38,7 +39,6 @@ from zipfile import ZipFile
 
 import attrs
 import shamir_mnemonic
-from typing_extensions import Self
 import yaml
 
 from swh.core.api.classes import stream_results
