@@ -1,4 +1,4 @@
-# Copyright (C) 2024  The Software Heritage developers
+# Copyright (C) 2024-2026  The Software Heritage developers
 # See the AUTHORS file at the top-level directory of this distribution
 # License: GNU General Public License version 3, or any later version
 # See top-level LICENSE file for more information
@@ -167,7 +167,7 @@ class MirrorNotificationWatcher:
                     masking_request.id,
                     "Mask all objects listed in the notification until a decision is made.",
                 )
-                self.send_upstream_removal_email(notification)
+            self.send_upstream_removal_email(notification)
         except DuplicateRequest:
             # We assume this means we are replaying journal messages that we
             # have already processed, and therefore, do nothing.
