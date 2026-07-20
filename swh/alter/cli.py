@@ -1,4 +1,4 @@
-# Copyright (C) 2023  The Software Heritage developers
+# Copyright (C) 2023-2026  The Software Heritage developers
 # See the AUTHORS file at the top-level directory of this distribution
 # License: GNU General Public License version 3, or any later version
 # See top-level LICENSE file for more information
@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Callable, Dict, Iterable, Set, TextIO, Tuple, 
 
 import click
 
-from swh.core.cli import CONTEXT_SETTINGS
+from swh.core.cli import CONTEXT_SETTINGS, setup_config
 from swh.core.cli import swh as swh_cli_group
 
 if TYPE_CHECKING:
@@ -169,17 +169,11 @@ def alter_cli_group(ctx):
     on a YubiKey. Keys specified by any other identifiers will be
     considered as plain age identities.
     """  # noqa: B950
-    from swh.core import config
-
     from .operations import logger as operations_logger
     from .recovery_bundle import logger as recovery_bundle_logger
 
-    try:
-        conf = config.load_from_envvar()
-    except AssertionError as ex:
-        raise click.ClickException(ex.args[0])
-    ctx.ensure_object(dict)
-    ctx.obj["config"] = conf
+    # Needed for tests...
+    setup_config(ctx, config_file=None)
 
     for logger in (operations_logger, recovery_bundle_logger):
         if not logger.propagate:

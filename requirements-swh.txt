@@ -1,4 +1,4 @@
-swh.core[http] >= 4.1.0  # [http] is required by swh.core.pytest_plugin
+swh.core[http] >= 4.8.0  # [http] because swh.core.api is used in a few places
 swh.graph >= 3.1
 swh.model >= 8.4.0
 swh.search >= 0.19
