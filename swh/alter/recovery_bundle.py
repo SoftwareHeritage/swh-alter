@@ -113,7 +113,13 @@ class _ManifestDumper(yaml.SafeDumper):
 
 def check_call(command: Sequence[str], **kwargs) -> subprocess.CompletedProcess:
     try:
-        return subprocess.run(command, capture_output=True, check=True, **kwargs)
+        return subprocess.run(
+            command,
+            capture_output=True,
+            check=True,
+            env={"LC_ALL": "en_EN.UTF-8"},
+            **kwargs,
+        )
     except subprocess.CalledProcessError as e:
         logger.warning(
             "Command `%s` failed with exit code %s", shlex.join(command), e.returncode
@@ -292,7 +298,12 @@ def age_decrypt_from_identity(
         "-",
         "-",
     ]
-    age_proc = subprocess.run(cmdline, input=ciphertext, capture_output=True)
+    age_proc = subprocess.run(
+        cmdline,
+        input=ciphertext,
+        capture_output=True,
+        env={"LC_ALL": "en_EN.UTF-8"},
+    )
     if age_proc.returncode != 0 and b"No matching keys found" in age_proc.stderr:
         raise WrongDecryptionKey()
     age_proc.check_returncode()
